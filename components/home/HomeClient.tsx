@@ -3,21 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { HeartIcon } from "@heroicons/react/24/solid";
 import {
-  HeartIcon as HeartIconOutline,
-} from "@heroicons/react/24/outline";
-
-import {
-  HeartIcon as HeartIconSolid,
-} from "@heroicons/react/24/solid";
-
-import {
-  BadgeCheck,
-  Shield,
-  Warehouse,
   Heart,
+  Menu,
+  X,
 } from "lucide-react";
-
+import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
 import ExploreCategories from "@/components/home/ExploreCategories";
 import ListingCarousel from "@/components/home/ListingCarousel";
@@ -39,6 +31,7 @@ type Listing = {
 };
 
 export default function HomeClient() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
 const [favorites, setFavorites] = useState<string[]>([]);
 const [debugMessage, setDebugMessage] = useState("Starter...");
@@ -103,16 +96,15 @@ if (data) {
 fetchFavorites();
   }, []);
 
-const latestListings = listings.slice(0, 4);
+const latestListings = listings;
 
-const trendingListings = [...listings]
-  .sort((a, b) => (b.trending_score || 0) - (a.trending_score || 0))
-  .slice(0, 4);
-  const hasTrending = trendingListings.length > 0;
+const trendingListings = [...listings].sort(
+  (a, b) => (b.trending_score || 0) - (a.trending_score || 0)
+);
 
-const weLoveListings = listings
-  .filter((listing) => listing.is_we_love)
-  .slice(0, 4);
+const weLoveListings = listings.filter(
+  (listing) => listing.is_we_love
+);
 
 console.log("ALLE listings:", listings.length);
 console.log("Trending:", trendingListings.length);
@@ -160,55 +152,15 @@ async function toggleFavorite(listingId: string) {
 
   return (
   <main className="min-h-screen bg-[#f8f6f1]">
-     
-<header className="fixed top-0 z-50 w-full bg-[#063f32]/95 backdrop-blur">
-  <div className="mx-auto flex h-20 max-w-[1800px] items-center justify-between px-4 md:h-24 md:px-8">
-    <Link href="/">
-      <img
-        src="/images/equishopper-logo.png"
-        alt="Equishopper"
-        className="h-16 w-16 md:h-24 md:w-24"
-      />
-    </Link>
-
-    <nav className="hidden gap-10 text-sm uppercase tracking-[0.18em] text-[#d4af37] md:flex">
-      <Link href="/">Forside</Link>
-      <Link href="/newest">Annoncer</Link>
-      <Link href="/category/til-hesten">Kategorier</Link>
-      <Link href="/">Nyheder</Link>
-    </nav>
-
-    <div className="flex items-center gap-2 md:gap-4">
-      <Link
-        href="/favorites"
-        className="rounded-full border border-[#d4af37] px-4 py-2 text-sm text-white md:px-6"
-      >
-        Favoritter
-      </Link>
-
-      <Link
-        href="/login"
-        className="rounded-full border border-[#d4af37] px-4 py-2 text-sm text-white md:px-6"
-      >
-        Log ind
-      </Link>
-
-      <Link
-        href="/sell"
-        className="rounded-full bg-[#d4af37] px-4 py-2 text-sm font-medium text-black md:px-6"
-      >
-        Opret
-      </Link>
-    </div>
-  </div>
-</header>
+   
+<Header />
 
 <Hero />
 
 <ExploreCategories />
 
-<section className="mx-auto max-w-7xl px-4 pb-14 md:px-8 md:pb-20">
-  <div className="space-y-12 xl:grid xl:grid-cols-3 xl:gap-8 xl:space-y-0">
+<section className="mx-auto max-w-7xl pb-14 md:pb-20">
+  <div className="space-y-12">
 
 <ListingCarousel
   title="🔥 Trending"

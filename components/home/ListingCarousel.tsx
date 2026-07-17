@@ -34,92 +34,110 @@ export default function ListingCarousel({
 }: Props) {
   return (
     <section className="w-full">
-      <div className="mb-5 flex items-center justify-between">
-        <h3 className="text-2xl font-bold text-[#171717]">{title}</h3>
+      <div className="mb-5 flex items-center justify-between px-4 md:px-8 xl:px-0">
+        <h3 className="font-serif text-2xl font-normal text-[#063f32] md:text-3xl">
+          {title}
+        </h3>
 
-        <Link href={href} className="text-sm text-[#063f32]">
+        <Link
+          href={href}
+          className="text-sm font-medium text-[#063f32] transition hover:text-[#b79a3d]"
+        >
           Se alle →
         </Link>
       </div>
 
-      <div className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-5 xl:mx-0 xl:grid xl:grid-cols-2 xl:px-0">
-        {listings.map((listing) => {
-          const firstImage = listing.listing_images
-            ? [...listing.listing_images].sort(
-                (a, b) => a.sort_order - b.sort_order
-              )[0]
-            : null;
+      {listings.length === 0 ? (
+        <div className="mx-4 rounded-[28px] border border-[#eadfcb] bg-[#fbfaf7] px-6 py-10 text-center md:mx-8 xl:mx-0">
+          <p className="text-sm text-stone-500">
+            Der er endnu ingen annoncer her.
+          </p>
+        </div>
+      ) : (
+        <div className="flex snap-x gap-4 overflow-x-auto px-4 pb-7 md:gap-5 md:px-8 xl:px-0">
+          {listings.map((listing) => {
+            const firstImage = listing.listing_images
+              ? [...listing.listing_images].sort(
+                  (a, b) => a.sort_order - b.sort_order
+                )[0]
+              : null;
 
-          const isFavorite = favorites.includes(listing.id);
+            const isFavorite = favorites.includes(listing.id);
 
-          return (
-            <article
-              key={listing.id}
-              className="relative w-[72vw] max-w-[270px] flex-none overflow-hidden rounded-[28px] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.06)] xl:w-auto xl:max-w-none"
-            >
-              {listing.is_we_love && (
-                <div className="absolute left-3 top-3 z-10 rounded-full bg-[#4f7c59] px-3 py-1 text-xs text-white">
-                  We Love
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => toggleFavorite(listing.id)}
-                className="absolute right-3 top-3 z-20 rounded-full bg-white/90 p-1 shadow-sm"
+            return (
+              <article
+                key={listing.id}
+                className="group relative w-[72vw] max-w-[300px] flex-none snap-start overflow-hidden rounded-[26px] bg-[#fbfaf7] shadow-[0_12px_34px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(0,0,0,0.10)] md:w-[260px] xl:w-[245px] 2xl:w-[265px]"
               >
-                {isFavorite ? (
-                  <HeartIconSolid className="h-6 w-6 text-[#d4af37]" />
-                ) : (
-                  <HeartIconOutline className="h-6 w-6 text-[#d4af37]" />
-                )}
-              </button>
-
-              <Link href={`/listing/${listing.id}`} className="block">
-                {firstImage ? (
-                  <img
-                    src={firstImage.image_url}
-                    alt={listing.title}
-                    className="h-56 w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-56 items-center justify-center bg-stone-100">
-                    <img
-                      src="/images/equishopper-grey-logo.png"
-                      className="h-28 opacity-50"
-                      alt=""
-                    />
+                {listing.is_we_love && (
+                  <div className="absolute left-3 top-3 z-10 rounded-full bg-[#d4af37] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#063f32]">
+                    We Love
                   </div>
                 )}
 
-                <div className="p-5">
-                  {listing.brand && (
-                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
-                      {listing.brand}
-                    </p>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleFavorite(listing.id);
+                  }}
+                  aria-label="Gem favorit"
+                  className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-sm transition hover:bg-white"
+                >
+                  {isFavorite ? (
+                    <HeartIconSolid className="h-5 w-5 text-[#d4af37]" />
+                  ) : (
+                    <HeartIconOutline className="h-5 w-5 text-[#d4af37]" />
                   )}
+                </button>
 
-                  <h4 className="mt-2 line-clamp-2 text-[15px] font-medium text-[#063f32]">
-                    {listing.title}
-                  </h4>
+                <Link href={`/listing/${listing.id}`} className="block">
+                  <div className="relative aspect-[4/5] overflow-hidden bg-[#f1ece2]">
+                    {firstImage ? (
+                      <img
+                        src={firstImage.image_url}
+                        alt={listing.title}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <img
+                          src="/images/equishopper-grey-logo.png"
+                          className="h-24 opacity-35"
+                          alt=""
+                        />
+                      </div>
+                    )}
+                  </div>
 
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="font-semibold text-[#063f32]">
-                      {listing.price} kr.
-                    </p>
+                  <div className="px-4 pb-5 pt-4">
+                    {listing.brand && (
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.2em] text-[#b79a3d]">
+                        {listing.brand}
+                      </p>
+                    )}
+
+                    <h4 className="line-clamp-2 min-h-[40px] text-[15px] font-medium leading-5 text-[#063f32]">
+                      {listing.title}
+                    </h4>
 
                     {listing.size && (
-                      <p className="text-xs text-stone-500">
+                      <p className="mt-1 text-xs text-stone-500">
                         Str. {listing.size}
                       </p>
                     )}
+
+                    <p className="mt-4 text-[15px] font-semibold text-black">
+                      {listing.price.toLocaleString("da-DK")} kr.
+                    </p>
                   </div>
-                </div>
-              </Link>
-            </article>
-          );
-        })}
-      </div>
+                </Link>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

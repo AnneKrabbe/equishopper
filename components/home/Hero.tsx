@@ -1,47 +1,40 @@
-import Link from "next/link";
-
 export default function Hero() {
   return (
-    <section className="bg-[#021511] pt-20 md:pt-24">
-      <div className="mx-auto grid min-h-[560px] max-w-[1800px] grid-cols-[52%_48%] overflow-hidden md:grid-cols-[42%_58%]">
-        <div className="flex items-center px-6 py-12 text-white md:px-14 md:py-16">
-          <div className="max-w-xl">
-            <h1 className="font-serif text-[44px] leading-[0.98] md:text-7xl">
-              Brugt
-              <br />
-              rideudstyr
-              <br />
-              & tilbehør
-            </h1>
+    <section className="relative pt-20 md:pt-24">
+      <div className="relative h-[560px] overflow-hidden md:h-[700px]">
+        <img
+          src="/images/hero-horse.png"
+          alt="Hero"
+          className="absolute inset-0 h-full w-full object-cover object-[center_22%]"
+        />
 
-            <p className="mt-6 max-w-sm text-[15px] leading-7 text-stone-100 md:text-lg">
-              Køb og sælg kvalitetsudstyr til hest og rytter — nemt, sikkert og bæredygtigt.
-            </p>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/58" />
 
-            <div className="mt-7 flex max-w-md rounded-full bg-white p-1.5 md:p-2">
-              <input
-                className="min-w-0 flex-1 rounded-full px-5 py-3 text-sm text-black outline-none md:px-8 md:py-5"
-                placeholder="Søg efter udstyr..."
-              />
+        <div className="absolute inset-0 flex items-end pb-8 md:pb-12">
+       <div className="mx-auto flex h-full w-full max-w-[1800px] items-end px-6 md:px-16">
+  <div className="max-w-xl md:mb-24 md:ml-0 lg:-ml-24 xl:-ml-5">
 
-              <button className="rounded-full bg-[#d4af37] px-5 text-sm text-black md:px-7">
-                Søg
-              </button>
-            </div>
+              <p className="mb-5 text-[12px] uppercase tracking-[0.38em] text-[#d4af37]">
+                Premium secondhand til hest & rytter
+              </p>
 
-            <div className="mt-6 flex flex-col gap-2 text-sm text-stone-100 md:flex-row md:gap-6">
-              <span>✓ Sikkert salg</span>
-              <span>✓ Verificerede brugere</span>
-              <span>✓ Bæredygtigt valg</span>
+              <div className="mb-7 flex max-w-xl rounded-full bg-white p-2 shadow-2xl">
+                <input
+                  className="min-w-0 flex-1 rounded-full px-6 py-4 text-sm text-black outline-none"
+                  placeholder="Søg efter sadler, trenser..."
+                />
+
+                <button className="rounded-full bg-[#d4af37] px-7 py-4 text-sm font-semibold text-black transition hover:brightness-95">
+                  Søg
+                </button>
+              </div>
+
+              <p className="max-w-lg text-lg leading-8 text-white/95">
+                Køb og sælg kvalitetsudstyr til hest og rytter – nemt, sikkert
+                og bæredygtigt.
+              </p>
             </div>
           </div>
-        </div>
-
-        <div
-          className="relative bg-cover bg-center"
-          style={{ backgroundImage: "url('/images/hero-horse.png')" }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-[#021511] via-[#021511]/35 to-transparent" />
         </div>
       </div>
     </section>

@@ -16,52 +16,54 @@ type ListingCardProps = {
 
 export default function ListingCard({ listing }: ListingCardProps) {
   const firstImage = listing.listing_images
-    ? [...listing.listing_images].sort((a, b) => a.sort_order - b.sort_order)[0]
+    ? [...listing.listing_images].sort(
+        (a, b) => a.sort_order - b.sort_order
+      )[0]
     : null;
 
   return (
     <Link
       href={`/listing/${listing.id}`}
-      className="group relative overflow-hidden rounded-[1.7rem] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(0,0,0,0.10)]"
+      className="group overflow-hidden rounded-[26px] bg-[#fbfaf7] shadow-[0_12px_34px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(0,0,0,0.10)]"
     >
-      {firstImage ? (
-        <img
-          src={firstImage.image_url}
-          alt={listing.title}
-          className="h-52 w-full object-cover transition duration-500 group-hover:scale-105"
-        />
-      ) : (
-        <div className="flex h-52 items-center justify-center bg-stone-50">
+      <div className="aspect-[4/5] overflow-hidden bg-[#f2ede4]">
+        {firstImage ? (
           <img
-            src="/images/equishopper-grey-logo.png"
-            alt=""
-            className="h-32 w-auto opacity-60"
+            src={firstImage.image_url}
+            alt={listing.title}
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <img
+              src="/images/equishopper-grey-logo.png"
+              alt=""
+              className="h-24 opacity-35"
+            />
+          </div>
+        )}
+      </div>
 
-      <div className="p-4">
+      <div className="px-5 pb-5 pt-4">
         {listing.brand && (
-          <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-stone-400">
+          <p className="mb-1 text-[10px] uppercase tracking-[0.22em] text-[#b79a3d]">
             {listing.brand}
           </p>
         )}
 
-        <h3 className="line-clamp-1 text-[15px] font-medium text-[#062f25]">
+        <h3 className="line-clamp-2 min-h-[44px] text-[15px] font-medium leading-5 text-[#063f32]">
           {listing.title}
         </h3>
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-[15px] font-semibold text-[#062f25]">
-            {listing.price} kr.
+        {listing.size && (
+          <p className="mt-1 text-xs text-stone-500">
+            Str. {listing.size}
           </p>
+        )}
 
-          {listing.size && (
-            <p className="text-xs text-stone-500">
-              Str. {listing.size}
-            </p>
-          )}
-        </div>
+        <p className="mt-4 text-[16px] font-semibold text-black">
+          {listing.price.toLocaleString("da-DK")} kr.
+        </p>
       </div>
     </Link>
   );
