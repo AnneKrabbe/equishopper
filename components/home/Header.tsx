@@ -307,12 +307,14 @@ export default function Header() {
             <div className="hidden h-11 w-11 animate-pulse rounded-full bg-white/10 md:block" />
           )}
 
-          <Link
-            href="/sell"
-            className="hidden rounded-full bg-[#d4af37] px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#e1c05a] md:inline-block"
-          >
-            Opret
-          </Link>
+          {!authLoading && (
+            <Link
+              href={user ? "/sell" : "/register"}
+              className="hidden rounded-full bg-[#d4af37] px-5 py-2.5 text-sm font-medium text-black transition hover:bg-[#e1c05a] md:inline-block"
+            >
+              {user ? "Ny annonce" : "Ny bruger"}
+            </Link>
+          )}
 
           <label
             htmlFor="mobile-menu-toggle"
@@ -397,15 +399,14 @@ export default function Header() {
             <Link href="/login">Log ind</Link>
           )}
 
-{!authLoading && (
-  <Link
-    href={user ? "/sell" : "/register"}
-    className="mt-6 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base text-black"
-  >
-    {user ? "Opret annonce" : "Ny bruger"}
-  </Link>
-)}
-         
+          {!authLoading && (
+            <Link
+              href={user ? "/sell" : "/register"}
+              className="mt-6 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base text-black"
+            >
+              {user ? "Ny annonce" : "Ny bruger"}
+            </Link>
+          )}
         </nav>
       </div>
     </header>
