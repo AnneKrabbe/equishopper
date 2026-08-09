@@ -766,7 +766,7 @@ export default function ListingPage({
                     <img
                       src={images[activeImage].image_url}
                       alt={listing.title}
-                      className="h-[390px] w-full object-cover transition duration-500 group-hover:scale-[1.015] md:h-[540px]"
+                      className="h-[390px] w-full object-contain transition duration-300 md:h-[540px]"
                     />
 
                     <span className="absolute bottom-5 right-5 z-20 flex items-center gap-2 rounded-full bg-black/45 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm">
@@ -840,7 +840,7 @@ export default function ListingPage({
                       <img
                         src={image.image_url}
                         alt=""
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain bg-[#f1ece2]"
                       />
                     </button>
                   ))}

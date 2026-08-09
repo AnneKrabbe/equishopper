@@ -349,7 +349,7 @@ if (subcategory.trim().toLowerCase() === "underlag og pads") {
           );
         })
         .map(([, type]) => type)
-        .filter(Boolean),
+        .filter((type): type is string => Boolean(type)),
     ),
   );
 
@@ -358,7 +358,7 @@ if (subcategory.trim().toLowerCase() === "underlag og pads") {
       .from("sizes")
       .select("name, type, sort_order")
       .in("type", saddleSizeTypes)
-      .order("sort_order");
+      .order("sort_order", { ascending: true });
 
     if (error) {
       console.error(
@@ -373,7 +373,8 @@ if (subcategory.trim().toLowerCase() === "underlag og pads") {
       new Set(
         (data ?? [])
           .map((item) => item.name)
-          .filter(Boolean),
+          .filter((name): name is string => Boolean(name))
+          .filter((name) => name.includes('"')),
       ),
     );
 
