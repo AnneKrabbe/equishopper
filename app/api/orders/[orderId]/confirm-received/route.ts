@@ -12,6 +12,8 @@ type RouteContext = {
   }>;
 };
 
+type NumericValue = number | string | null;
+
 type PreparedOrder = {
   id: string;
   buyer_id: string;
@@ -27,11 +29,11 @@ type PreparedOrder = {
   stripe_transfer_id: string | null;
   seller_stripe_account_id: string | null;
 
-  seller_payout_amount: number | null;
+  seller_payout_amount: NumericValue;
 
-  payout_gross_amount: number | null;
-  payout_adjustment_amount: number | null;
-  payout_net_amount: number | null;
+  payout_gross_amount: NumericValue;
+  payout_adjustment_amount: NumericValue;
+  payout_net_amount: NumericValue;
   payout_completed_without_transfer: boolean | null;
 };
 
@@ -49,14 +51,6 @@ export async function POST(
   context: RouteContext,
 ) {
   let preparedOrder: PreparedOrder | null = null;
-
-  /*
-   * Når dette bliver true, må vi ikke automatisk rulle
-   * databaseklargøringen tilbage.
-   *
-   * Et Stripe-kald kan være gennemført, selv om svaret
-   * aldrig når tilbage til serveren.
-   */
   let stripeRequestStarted = false;
 
   try {
@@ -64,12 +58,8 @@ export async function POST(
 
     if (!isUuid(orderId)) {
       return NextResponse.json(
-        {
-          error: "Ordre-id er ugyldigt.",
-        },
-        {
-          status: 400,
-        },
+        { error: "Ordre-id er ugyldigt." },
+        { status: 400 },
       );
     }
 
@@ -77,26 +67,11 @@ export async function POST(
 
     if (!user) {
       return NextResponse.json(
-        {
-          error: "Du skal være logget ind.",
-        },
-        {
-          status: 401,
-        },
+        { error: "Du skal være logget ind." },
+        { status: 401 },
       );
     }
 
-    /*
-     * prepare_order_payout:
-     *
-     * - låser ordren
-     * - kontrollerer køberen
-     * - kontrollerer betaling og levering
-     * - stopper ved aktiv tvist
-     * - finder ventende sælgerreguleringer
-     * - fastlåser brutto-, regulerings- og nettobeløb
-     * - sætter payout_status = processing
-     */
     const {
       data: preparedData,
       error: prepareError,
@@ -120,10 +95,6 @@ export async function POST(
       );
     }
 
-    /*
-     * Ordren kan allerede være afsluttet med en normal
-     * Stripe-transfer.
-     */
     if (
       preparedOrder.payout_status === "paid" &&
       preparedOrder.stripe_transfer_id
@@ -141,10 +112,6 @@ export async function POST(
       return NextResponse.json(response);
     }
 
-    /*
-     * Ordren kan også være afsluttet uden en Stripe-transfer,
-     * fordi reguleringer modregnede hele sælgerens udbetaling.
-     */
     if (
       preparedOrder.payout_status === "paid" &&
       preparedOrder.payout_completed_without_transfer
@@ -162,23 +129,16 @@ export async function POST(
       return NextResponse.json(response);
     }
 
-    const payoutAmount =
-      preparedOrder.payout_net_amount;
+    const payoutAmount = toIntegerAmount(
+      preparedOrder.payout_net_amount,
+    );
 
-    if (
-      typeof payoutAmount !== "number" ||
-      !Number.isInteger(payoutAmount) ||
-      payoutAmount < 0
-    ) {
+    if (payoutAmount === null || payoutAmount < 0) {
       throw new Error(
         "Ordren mangler et gyldigt nettoudbetalingsbeløb.",
       );
     }
 
-    /*
-     * Hvis reguleringerne har modregnet hele beløbet,
-     * skal vi ikke kalde Stripe.
-     */
     if (payoutAmount === 0) {
       const {
         data: finalizedData,
@@ -211,10 +171,6 @@ export async function POST(
       return NextResponse.json(response);
     }
 
-    /*
-     * Fra dette punkt skal der oprettes en rigtig
-     * Stripe-transfer.
-     */
     if (!preparedOrder.stripe_charge_id) {
       throw new Error(
         "Ordren mangler Stripe charge-id.",
@@ -230,10 +186,6 @@ export async function POST(
     const currency =
       preparedOrder.currency?.toLowerCase() || "dkk";
 
-    /*
-     * Den faste idempotency key sikrer, at gentagne requests
-     * ikke opretter flere transfers for samme ordre.
-     */
     const idempotencyKey =
       `equishopper-order-payout-${orderId}`;
 
@@ -243,32 +195,24 @@ export async function POST(
       {
         amount: payoutAmount,
         currency,
-
         destination:
           preparedOrder.seller_stripe_account_id,
-
         source_transaction:
           preparedOrder.stripe_charge_id,
-
         transfer_group:
           `ORDER_${preparedOrder.id}`,
-
         metadata: {
           order_id: preparedOrder.id,
           buyer_id: preparedOrder.buyer_id,
           seller_id: preparedOrder.seller_id,
-
           payout_gross_amount: String(
             preparedOrder.payout_gross_amount ?? 0,
           ),
-
           payout_adjustment_amount: String(
             preparedOrder.payout_adjustment_amount ?? 0,
           ),
-
           payout_net_amount: String(payoutAmount),
         },
-
         description:
           `Equishopper-udbetaling for ordre ${preparedOrder.id}`,
       },
@@ -277,13 +221,6 @@ export async function POST(
       },
     );
 
-    /*
-     * Stripe-transferen er nu oprettet.
-     *
-     * Hvis databasefinaliseringen fejler, skal ordren forblive
-     * i processing. Ved næste request bruges samme idempotency
-     * key, og Stripe returnerer samme transfer.
-     */
     const {
       data: finalizedData,
       error: finalizeError,
@@ -314,14 +251,17 @@ export async function POST(
     const finalizedOrder =
       normalizeOrder(finalizedData);
 
+    const payoutAdjustmentAmount =
+      toNumber(preparedOrder.payout_adjustment_amount);
+
     const response: SuccessResponse = {
       success: true,
       alreadyCompleted: false,
       transferId: transfer.id,
       completedWithoutTransfer: false,
       message:
-        preparedOrder.payout_adjustment_amount &&
-        preparedOrder.payout_adjustment_amount > 0
+        payoutAdjustmentAmount !== null &&
+        payoutAdjustmentAmount > 0
           ? "Ordren er afsluttet. Sælgerens tidligere reguleringer er modregnet, og restbeløbet er frigivet."
           : "Ordren er afsluttet, og betalingen er frigivet til sælgeren.",
       order: finalizedOrder,
@@ -334,16 +274,6 @@ export async function POST(
       error,
     );
 
-    /*
-     * Hvis fejlen med sikkerhed opstod før Stripe-kaldet,
-     * frigiver fail_order_payout de reguleringer, som blev
-     * reserveret til denne ordre.
-     *
-     * Hvis Stripe-kaldet allerede er startet, bevarer vi
-     * processing-status. Ellers risikerer vi at genbruge
-     * reguleringerne, selv om Stripe-transferen faktisk blev
-     * gennemført.
-     */
     if (
       preparedOrder &&
       !stripeRequestStarted
@@ -445,6 +375,40 @@ function normalizeOrder(
   }
 
   return null;
+}
+
+function toNumber(
+  value: NumericValue,
+): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const numberValue =
+    typeof value === "number"
+      ? value
+      : Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    return null;
+  }
+
+  return numberValue;
+}
+
+function toIntegerAmount(
+  value: NumericValue,
+): number | null {
+  const numberValue = toNumber(value);
+
+  if (
+    numberValue === null ||
+    !Number.isInteger(numberValue)
+  ) {
+    return null;
+  }
+
+  return numberValue;
 }
 
 function isUuid(value: string) {

@@ -1974,20 +1974,10 @@ function ShippingProductSelector({
                   </p>
                 </div>
 
-                <div className="mt-3 grid gap-2 text-sm text-stone-600">
+                <div className="mt-3 text-sm text-stone-600">
                   <ShippingFact
-                    label="Maks. vægt"
+                    label="Vægt"
                     value={formatWeight(product.max_weight_grams)}
-                  />
-
-                  <ShippingFact
-                    label="Maks. mål"
-                    value={
-                      product.size_rule_text ||
-                      `Maks. længde ${formatDimension(
-                        product.max_length_cm,
-                      )} cm`
-                    }
                   />
                 </div>
 
