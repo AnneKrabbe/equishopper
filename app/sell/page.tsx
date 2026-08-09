@@ -1981,11 +1981,6 @@ function ShippingProductSelector({
                   />
                 </div>
 
-                {product.description && (
-                  <p className="mt-3 text-xs leading-5 text-stone-500">
-                    {product.description}
-                  </p>
-                )}
               </div>
             </div>
           </button>
@@ -2032,18 +2027,6 @@ function formatWeight(weightGrams: number) {
   return `${(weightGrams / 1000).toLocaleString("da-DK", {
     maximumFractionDigits: 2,
   })} kg`;
-}
-
-function formatDimension(value: number | string) {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed)) {
-    return String(value);
-  }
-
-  return parsed.toLocaleString("da-DK", {
-    maximumFractionDigits: 2,
-  });
 }
 
 function ChoiceCard({
