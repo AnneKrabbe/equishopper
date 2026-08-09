@@ -2,24 +2,24 @@ import Link from "next/link";
 
 export default function ExploreCategories() {
   const categories = [
-{
-  label: "Til hesten",
-  icon: "/images/horse-head.png",
-  href: "/category/til-hesten",
-  className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
-},
-{
-  label: "Til rytteren",
-  icon: "/images/horse-rider.png",
-  href: "/category/til-rytteren",
-  className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
-},
-{
-  label: "Til stalden",
-  icon: "/images/stable.png",
-  href: "/category/til-stalden",
-  className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
-},
+    {
+      label: "Til hesten",
+      icon: "/images/horse-head.png",
+      href: "/annoncer?category=Til+hesten",
+      className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
+    },
+    {
+      label: "Til rytteren",
+      icon: "/images/horse-rider.png",
+      href: "/annoncer?category=Til+rytteren",
+      className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
+    },
+    {
+      label: "Til stalden",
+      icon: "/images/stable.png",
+      href: "/annoncer?category=Til+stalden",
+      className: "h-16 w-16 scale-[2.2] object-contain md:h-20 md:w-20 md:scale-[2.4]",
+    },
   ];
 
   return (

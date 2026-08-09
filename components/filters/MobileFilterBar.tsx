@@ -17,16 +17,23 @@ export default function MobileFilterBar({
   return (
     <>
       {showFilters && (
-        <div className="fixed inset-0 z-50 bg-black/40 lg:hidden">
-          <div className="absolute bottom-0 max-h-[85vh] w-full overflow-y-auto rounded-t-[2rem] bg-[#f8f6f1] p-4">
+        <div
+          className="fixed inset-0 z-[10000] bg-black/40 lg:hidden"
+          onClick={() => setShowFilters(false)}
+        >
+          <div
+            className="absolute bottom-0 max-h-[90vh] w-full overflow-y-auto rounded-t-[2rem] bg-[#f8f6f1] p-4 pb-8"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-serif text-3xl text-[#063f32]">
-                Filtre
+                Filtre og sortering
               </h2>
 
               <button
+                type="button"
                 onClick={() => setShowFilters(false)}
-                className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm"
+                className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm text-[#063f32]"
               >
                 Luk
               </button>
@@ -35,21 +42,19 @@ export default function MobileFilterBar({
             <FilterSidebar
               categoryName={categoryName}
               listingsCount={listingsCount}
+              onClose={() => setShowFilters(false)}
             />
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 z-40 flex w-full gap-3 border-t border-stone-200 bg-[#fbfaf7]/95 px-4 py-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden">
+      <div className="fixed bottom-0 left-0 z-40 w-full border-t border-stone-200 bg-[#fbfaf7]/95 px-4 py-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden">
         <button
+          type="button"
           onClick={() => setShowFilters(true)}
-          className="flex-1 rounded-full bg-[#063f32] px-5 py-3 text-sm font-medium text-white"
+          className="w-full rounded-full bg-[#063f32] px-5 py-3 text-sm font-medium text-white"
         >
-          Filtre
-        </button>
-
-        <button className="flex-1 rounded-full border border-[#d4af37] bg-white px-5 py-3 text-sm font-medium text-[#063f32]">
-          Sortér
+          Filtre og sortering
         </button>
       </div>
     </>

@@ -3,12 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { HeartIcon } from "@heroicons/react/24/solid";
-import {
-  Heart,
-  Menu,
-  X,
-} from "lucide-react";
 import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
 import ExploreCategories from "@/components/home/ExploreCategories";
@@ -31,209 +25,218 @@ type Listing = {
 };
 
 export default function HomeClient() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
-const [favorites, setFavorites] = useState<string[]>([]);
-const [debugMessage, setDebugMessage] = useState("Starter...");
+  const [favorites, setFavorites] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchListings() {
-
-      setDebugMessage("Forbinder til Supabase...");
       const { data, error } = await supabase
         .from("listings")
         .select(`
-        id,
-        title,
-        price,
-        brand,
-        size,
-        location,
-        created_at,
-        trending_score,
-        is_we_love,
-        listing_images (
-          image_url,
-          sort_order
-  )
-`)
+          id,
+          title,
+          price,
+          brand,
+          size,
+          location,
+          created_at,
+          trending_score,
+          is_we_love,
+          listing_images (
+            image_url,
+            sort_order
+          )
+        `)
         .order("created_at", { ascending: false });
 
+      if (error) {
+        console.error("Kunne ikke hente annoncer:", error);
+        return;
+      }
 
-if (error) {
-  console.log("Supabase fejl:", error);
-  setDebugMessage("Supabase fejl: " + error.message);
-  return;
-}
+      if (data) {
+        setListings(data as Listing[]);
+      }
+    }
 
-if (data) {
-  console.log("Supabase listings:", data.length);
-  setDebugMessage("Listings hentet: " + data.length);
-  setListings(data as Listing[]);
-}
+    async function fetchFavorites() {
+      const { data: userData } = await supabase.auth.getUser();
+
+      if (!userData.user) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("favorites")
+        .select("listing_id")
+        .eq("user_id", userData.user.id);
+
+      if (error) {
+        console.error("Kunne ikke hente favoritter:", error);
+        return;
+      }
+
+      if (data) {
+        setFavorites(data.map((item) => item.listing_id));
+      }
     }
 
     fetchListings();
-
-    async function fetchFavorites() {
-      
-  const { data: userData } = await supabase.auth.getUser();
-
-  if (!userData.user) {
-    return;
-  }
-
-  const { data } = await supabase
-    .from("favorites")
-    .select("listing_id")
-    .eq("user_id", userData.user.id);
-
-  if (data) {
-    setFavorites(data.map((item) => item.listing_id));
-  }
-}
-
-fetchFavorites();
+    fetchFavorites();
   }, []);
 
-const latestListings = listings;
+  const latestListings = listings;
 
-const trendingListings = [...listings].sort(
-  (a, b) => (b.trending_score || 0) - (a.trending_score || 0)
-);
-
-const weLoveListings = listings.filter(
-  (listing) => listing.is_we_love
-);
-
-console.log("ALLE listings:", listings.length);
-console.log("Trending:", trendingListings.length);
-console.log("We Love:", weLoveListings.length);
-console.log("Nyeste:", latestListings.length);
-
-async function toggleFavorite(listingId: string) {
-
-  const { data: userData } = await supabase.auth.getUser();
-
-  if (!userData.user) {
-    alert("Du skal være logget ind for at gemme favoritter.");
-    return;
-  }
-
-  if (favorites.includes(listingId)) {
-  await supabase
-    .from("favorites")
-    .delete()
-    .eq("user_id", userData.user.id)
-    .eq("listing_id", listingId);
-
-  await supabase.rpc("decrement_favorite_count", {
-    listing_id_input: listingId,
-  });
-
-  setFavorites((prev) =>
-    prev.filter((id) => id !== listingId)
+  const trendingListings = [...listings].sort(
+    (a, b) => (b.trending_score || 0) - (a.trending_score || 0)
   );
-} else {
-  await supabase
-    .from("favorites")
-    .insert({
-      user_id: userData.user.id,
-      listing_id: listingId,
+
+  const weLoveListings = listings.filter(
+    (listing) => listing.is_we_love
+  );
+
+  async function toggleFavorite(listingId: string) {
+    const { data: userData } = await supabase.auth.getUser();
+
+    if (!userData.user) {
+      alert("Du skal være logget ind for at gemme favoritter.");
+      return;
+    }
+
+    const isFavorite = favorites.includes(listingId);
+
+    if (isFavorite) {
+      const { error } = await supabase
+        .from("favorites")
+        .delete()
+        .eq("user_id", userData.user.id)
+        .eq("listing_id", listingId);
+
+      if (error) {
+        console.error("Kunne ikke fjerne favorit:", error);
+        return;
+      }
+
+      await supabase.rpc("decrement_favorite_count", {
+        listing_id_input: listingId,
+      });
+
+      setFavorites((previousFavorites) =>
+        previousFavorites.filter((id) => id !== listingId)
+      );
+
+      return;
+    }
+
+    const { error } = await supabase
+      .from("favorites")
+      .insert({
+        user_id: userData.user.id,
+        listing_id: listingId,
+      });
+
+    if (error) {
+      console.error("Kunne ikke tilføje favorit:", error);
+      return;
+    }
+
+    await supabase.rpc("increment_favorite_count", {
+      listing_id_input: listingId,
     });
 
-  await supabase.rpc("increment_favorite_count", {
-    listing_id_input: listingId,
-  });
-
-  setFavorites((prev) => [...prev, listingId]);
-}
-}
+    setFavorites((previousFavorites) => [
+      ...previousFavorites,
+      listingId,
+    ]);
+  }
 
   return (
-  <main className="min-h-screen bg-[#f8f6f1]">
-   
-<Header />
+    <main className="min-h-screen bg-[#f8f6f1]">
+      <Header />
 
-<Hero />
+      <Hero />
 
-<ExploreCategories />
+      <ExploreCategories />
 
-<section className="mx-auto max-w-7xl pb-14 md:pb-20">
-  <div className="space-y-12">
+      <section className="mx-auto max-w-7xl pb-14 md:pb-20">
+        <div className="space-y-12">
+          <ListingCarousel
+            title="🔥 Trending"
+            href="/trending"
+            listings={trendingListings}
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+          />
 
-<ListingCarousel
-  title="🔥 Trending"
-  href="/trending"
-  listings={trendingListings}
-  favorites={favorites}
-  toggleFavorite={toggleFavorite}
-/>
+          <ListingCarousel
+            title="💚 We Love"
+            href="/we-love"
+            listings={weLoveListings}
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+          />
 
-<ListingCarousel
-  title="💚 We Love"
-  href="/we-love"
-  listings={weLoveListings}
-  favorites={favorites}
-  toggleFavorite={toggleFavorite}
-/>
+          <ListingCarousel
+            title="👀 Nyeste annoncer"
+            href="/annoncer"
+            listings={latestListings}
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+          />
+        </div>
+      </section>
 
-<ListingCarousel
-  title="👀 Nyeste annoncer"
-  href="/newest"
-  listings={latestListings}
-  favorites={favorites}
-  toggleFavorite={toggleFavorite}
-/>
+      <section className="mx-auto grid max-w-7xl gap-6 px-8 pb-20 lg:grid-cols-3">
+        <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
+          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
+            Find annoncer
+          </p>
 
-  </div>
-</section>
+          <h3 className="mb-6 font-serif text-3xl">
+            Find præcis det, du leder efter
+          </h3>
 
-<section className="mx-auto grid max-w-7xl gap-6 px-8 pb-20 lg:grid-cols-3">
-  <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
-    <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
-      Shop efter kategori
-    </p>
-    <h3 className="mb-6 font-serif text-3xl">
-      Find præcis det, du leder efter
-    </h3>
-    <Link
-      href="/"
-      className="inline-block rounded-full bg-white px-6 py-3 text-sm font-medium text-black"
-    >
-      Se alle kategorier
-    </Link>
-  </div>
+          <Link
+            href="/annoncer"
+            className="inline-block rounded-full bg-white px-6 py-3 text-sm font-medium text-black"
+          >
+            Se alle annoncer
+          </Link>
+        </div>
 
-  <div className="rounded-3xl bg-white p-8 shadow">
-    <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#0b3b2f]">
-      Nyheder & guides
-    </p>
-    <h3 className="mb-6 font-serif text-3xl">
-      Inspiration, tips og viden til hest og rytter
-    </h3>
-    <Link
-      href="/"
-      className="inline-block rounded-full border border-[#d4af37] px-6 py-3 text-sm font-medium"
-    >
-      Læs de nyeste artikler
-    </Link>
-  </div>
+        <div className="rounded-3xl bg-white p-8 shadow">
+          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#0b3b2f]">
+            Nyheder & guides
+          </p>
 
-  <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
-    <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
-      Sikkert og trygt
-    </p>
-    <h3 className="mb-4 font-serif text-3xl">
-      Handel med ro i maven
-    </h3>
-    <ul className="space-y-2 text-stone-200">
-      <li>✓ Verificerede brugere</li>
-      <li>✓ Sikker betaling</li>
-      <li>✓ Hjælp når du har brug for det</li>
-    </ul>
-  </div>
-</section>
+          <h3 className="mb-6 font-serif text-3xl">
+            Inspiration, tips og viden til hest og rytter
+          </h3>
+
+          <Link
+            href="/"
+            className="inline-block rounded-full border border-[#d4af37] px-6 py-3 text-sm font-medium"
+          >
+            Læs de nyeste artikler
+          </Link>
+        </div>
+
+        <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
+          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
+            Sikkert og trygt
+          </p>
+
+          <h3 className="mb-4 font-serif text-3xl">
+            Handel med ro i maven
+          </h3>
+
+          <ul className="space-y-2 text-stone-200">
+            <li>✓ Verificerede brugere</li>
+            <li>✓ Sikker betaling</li>
+            <li>✓ Hjælp når du har brug for det</li>
+          </ul>
+        </div>
+      </section>
     </main>
   );
 }
