@@ -1,7 +1,7 @@
 export const sizeTypeBySubcategory: Record<string, string> = {
   "Grimer og træktove": "grime",
   Gamacher: "gamacher",
-  "Underlag og pads": "underlag",
+  "Underlag og pads": "sadel",
   Ridehjelme: "ridehjelm",
 
   Regndækken: "dækken",

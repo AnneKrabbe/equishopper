@@ -185,58 +185,7 @@ export default function HomeClient() {
           />
         </div>
       </section>
-
-      <section className="mx-auto grid max-w-7xl gap-6 px-8 pb-20 lg:grid-cols-3">
-        <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
-          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
-            Find annoncer
-          </p>
-
-          <h3 className="mb-6 font-serif text-3xl">
-            Find præcis det, du leder efter
-          </h3>
-
-          <Link
-            href="/annoncer"
-            className="inline-block rounded-full bg-white px-6 py-3 text-sm font-medium text-black"
-          >
-            Se alle annoncer
-          </Link>
-        </div>
-
-        <div className="rounded-3xl bg-white p-8 shadow">
-          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#0b3b2f]">
-            Nyheder & guides
-          </p>
-
-          <h3 className="mb-6 font-serif text-3xl">
-            Inspiration, tips og viden til hest og rytter
-          </h3>
-
-          <Link
-            href="/"
-            className="inline-block rounded-full border border-[#d4af37] px-6 py-3 text-sm font-medium"
-          >
-            Læs de nyeste artikler
-          </Link>
-        </div>
-
-        <div className="rounded-3xl bg-[#0b3b2f] p-8 text-white">
-          <p className="mb-4 text-sm uppercase tracking-[0.25em] text-[#d4af37]">
-            Sikkert og trygt
-          </p>
-
-          <h3 className="mb-4 font-serif text-3xl">
-            Handel med ro i maven
-          </h3>
-
-          <ul className="space-y-2 text-stone-200">
-            <li>✓ Verificerede brugere</li>
-            <li>✓ Sikker betaling</li>
-            <li>✓ Hjælp når du har brug for det</li>
-          </ul>
-        </div>
-      </section>
+      
     </main>
   );
 }

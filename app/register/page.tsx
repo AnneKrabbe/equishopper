@@ -207,7 +207,7 @@ export default function RegisterPage() {
         email,
         password: form.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm`,
+          emailRedirectTo: `${window.location.origin}/login?confirmed=true`,
           data: profileMetadata,
         },
       });

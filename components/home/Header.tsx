@@ -397,12 +397,15 @@ export default function Header() {
             <Link href="/login">Log ind</Link>
           )}
 
-          <Link
-            href="/sell"
-            className="mt-6 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base text-black"
-          >
-            Opret annonce
-          </Link>
+{!authLoading && (
+  <Link
+    href={user ? "/sell" : "/register"}
+    className="mt-6 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base text-black"
+  >
+    {user ? "Opret annonce" : "Ny bruger"}
+  </Link>
+)}
+         
         </nav>
       </div>
     </header>
