@@ -54,89 +54,6 @@ const decisionCards = [
   },
 ];
 
-const examples = [
-  {
-    label: "Eksempel 1",
-    title: "Ridehjelm med en ikke-oplyst revne",
-    situation:
-      "Køber modtager en ridehjelm og dokumenterer umiddelbart efter levering en revne, som ikke fremgår af annoncen eller sælgers billeder.",
-    assessment:
-      "Hvis dokumentationen sandsynliggør, at revnen var til stede ved modtagelsen, kan varen være væsentligt anderledes end beskrevet.",
-    possibleOutcome:
-      "Fuld refundering kan være relevant, normalt mod returnering af varen.",
-  },
-  {
-    label: "Eksempel 2",
-    title: "Sadel med tydeligt beskrevne brugsspor",
-    situation:
-      "En sadel er annonceret med tydelige billeder og beskrivelse af ridser og almindelige brugsspor. Efter modtagelsen ønsker køber et prisnedslag på grund af de samme brugsspor.",
-    assessment:
-      "Når forholdet var tydeligt oplyst inden købet, vil det normalt ikke i sig selv berettige køber til refundering.",
-    possibleOutcome:
-      "Ingen refundering, medmindre der dokumenteres andre væsentlige forhold.",
-  },
-  {
-    label: "Eksempel 3",
-    title: "Varen passer ikke, men korrekt annonce",
-    situation:
-      "Køber modtager varen i den størrelse, der stod i annoncen, men konstaterer, at varen ikke passer.",
-    assessment:
-      "Ved handel mellem private er manglende pasform eller almindelig fortrydelse som udgangspunkt ikke omfattet af køberbeskyttelsen, når annoncen var korrekt.",
-    possibleOutcome:
-      "Ingen refundering alene på grund af pasform eller ombestemmelse.",
-  },
-  {
-    label: "Eksempel 4",
-    title: "Sadel beskrevet som næsten uden brugsspor",
-    situation:
-      "Annoncen beskriver sadlen som næsten uden brugsspor, men købers billeder viser omfattende slid, dybe ridser og tydelig misfarvning.",
-    assessment:
-      "Hvis forskellen mellem annoncen og den modtagne vare er reel og væsentlig, kan køber have krav på en løsning.",
-    possibleOutcome:
-      "Afhængigt af omfanget kan delvis refundering eller fuld refundering mod retur være relevant.",
-  },
-  {
-    label: "Eksempel 5",
-    title: "Mindre fejl, som ikke ødelægger varens funktion",
-    situation:
-      "Køber dokumenterer en mindre skade eller mangel, som ikke var oplyst, men varen kan fortsat anvendes som forventet.",
-    assessment:
-      "Hvis problemet er reelt, men ikke gør varen værdiløs eller væsentligt uanvendelig, kan et rimeligt prisnedslag være mere proportionalt end at lade hele handlen gå tilbage.",
-    possibleOutcome:
-      "Delvis refundering kan være relevant.",
-  },
-  {
-    label: "Eksempel 6",
-    title: "Mulig transportskade",
-    situation:
-      "Varen ankommer beskadiget, og emballagen viser tydelige tegn på påvirkning under transporten.",
-    assessment:
-      "Vi ser blandt andet på emballeringen, billeder fra modtagelsen, tracking og fragtpartnerens regler. Ved DAO behandles transportrelaterede krav efter DAO's til enhver tid gældende vilkår og erstatningsregler.",
-    possibleOutcome:
-      "Resultatet afhænger af dokumentationen og fragtpartnerens gældende regler om ansvar og erstatning.",
-  },
-  {
-    label: "Eksempel 7",
-    title: "Varen er ikke modtaget",
-    situation:
-      "Tracking viser ikke en normal levering, og køber oplyser, at pakken ikke er modtaget.",
-    assessment:
-      "Equishopper undersøger tracking og andre tilgængelige leveringsoplysninger og kan afvente fragtpartnerens undersøgelse.",
-    possibleOutcome:
-      "Betalingen kan fortsat tilbageholdes, mens sagen undersøges. Den endelige løsning afhænger af dokumentationen og eventuelle erstatningsregler hos fragtpartneren.",
-  },
-  {
-    label: "Eksempel 8",
-    title: "Uenighed om personlig forventning",
-    situation:
-      "Køber synes efter modtagelsen, at farven, følelsen eller det generelle udtryk ikke helt svarer til den personlige forventning, men varen matcher annoncen.",
-    assessment:
-      "Køberbeskyttelsen er ikke en almindelig tilfredshedsgaranti. Det afgørende er som udgangspunkt, om varen objektivt svarer til annoncen.",
-    possibleOutcome:
-      "Ingen refundering alene på baggrund af en personlig forventning.",
-  },
-];
-
 const disputeCases = [
   {
     no: 1,
@@ -412,19 +329,6 @@ export default function DisputeHelpPage() {
               </div>
             </section>
 
-            <section>
-              <SectionIntro
-                eyebrow="Eksempler"
-                title="Sådan kan konkrete sager blive vurderet"
-                text="Eksemplerne viser vores normale tilgang. De er ikke garantier for udfaldet af en fremtidig sag."
-              />
-
-              <div className="mt-8 space-y-5">
-                {examples.map((example) => (
-                  <ExampleCard key={example.title} {...example} />
-                ))}
-              </div>
-            </section>
 
             <section>
               <SectionIntro
@@ -568,37 +472,6 @@ export default function DisputeHelpPage() {
                 En afgørelse i én sag er derfor ikke nødvendigvis udtryk for,
                 hvordan en anden sag med lignende forhold vil blive afgjort.
               </div>
-            </section>
-
-            <section className="grid gap-5 md:grid-cols-2">
-              <article className="rounded-[28px] border border-[#e7e1d7] bg-white p-7">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d4af37]">
-                  Frister
-                </p>
-                <h2 className="mt-3 font-serif text-3xl font-bold text-[#063f32]">
-                  Reagér hurtigt
-                </h2>
-                <p className="mt-4 leading-7 text-stone-600">
-                  Ved forsendelse skal et problem anmeldes inden for den frist,
-                  der fremgår af Equishoppers handelsbetingelser. Hvis en tvist
-                  oprettes rettidigt, tilbageholdes betalingen, mens sagen
-                  behandles.
-                </p>
-              </article>
-
-              <article className="rounded-[28px] border border-[#e7e1d7] bg-white p-7">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d4af37]">
-                  Uafhængige rettigheder
-                </p>
-                <h2 className="mt-3 font-serif text-3xl font-bold text-[#063f32]">
-                  Equishopper erstatter ikke domstolene
-                </h2>
-                <p className="mt-4 leading-7 text-stone-600">
-                  Equishoppers afgørelse styrer betalingsflowet på platformen.
-                  Køber og sælger kan fortsat gøre eventuelle rettigheder
-                  gældende uden for Equishopper efter de almindelige regler.
-                </p>
-              </article>
             </section>
 
             <section className="rounded-[32px] border border-[#d4af37]/40 bg-[#fffdf7] p-7 sm:p-9">

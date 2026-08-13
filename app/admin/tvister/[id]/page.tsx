@@ -1118,6 +1118,11 @@ function TimelineItem({
   event: DisputeEvent;
   actor?: ProfileSummary;
 }) {
+  const resolutionLabel =
+    event.event_type === "resolution"
+      ? getResolutionLabel(event.metadata)
+      : null;
+
   return (
     <article className="relative pl-8">
       <span
@@ -1126,29 +1131,97 @@ function TimelineItem({
         }`}
       />
       <div className="absolute bottom-[-24px] left-[5px] top-5 w-px bg-[#e7e1d7]" />
+
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-semibold text-[#063f32]">
           {eventLabels[event.event_type]}
         </p>
+
+        {resolutionLabel && (
+          <span className="rounded-full bg-[#edf5f0] px-2.5 py-1 text-xs font-semibold text-[#0b5a47]">
+            {resolutionLabel}
+          </span>
+        )}
+
         {event.is_internal && (
           <span className="rounded-full bg-[#fbf6e8] px-2.5 py-1 text-xs font-semibold text-[#8a6c13]">
             Intern
           </span>
         )}
+
         <span className="text-xs text-stone-400">
           {formatDate(event.created_at)}
         </span>
       </div>
+
       <p className="mt-1 text-xs text-stone-500">
         {formatProfileName(actor)}
       </p>
-      {event.message && (
+
+      {event.event_type === "resolution" && resolutionLabel && (
+        <div className="mt-3 rounded-2xl border border-[#d8e8df] bg-[#f3f8f5] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0b5a47]">
+            Afgørelse
+          </p>
+          <p className="mt-1 font-semibold text-[#063f32]">
+            {resolutionLabel}
+          </p>
+
+          {event.message && (
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-stone-700">
+              {event.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {event.event_type !== "resolution" && event.message && (
         <p className="mt-3 whitespace-pre-wrap rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-stone-700">
           {event.message}
         </p>
       )}
     </article>
   );
+}
+
+function getResolutionLabel(metadata: Record<string, unknown>) {
+  const rawValue =
+    metadata?.resolution_type ??
+    metadata?.resolutionType ??
+    metadata?.action ??
+    metadata?.status ??
+    metadata?.result;
+
+  const value =
+    typeof rawValue === "string"
+      ? rawValue.trim().toLowerCase()
+      : "";
+
+  switch (value) {
+    case "resolve_seller":
+    case "resolved_seller":
+    case "seller":
+    case "seller_wins":
+      return "Sælger får medhold";
+
+    case "resolve_buyer":
+    case "resolved_buyer":
+    case "buyer":
+    case "buyer_wins":
+      return "Køber får medhold";
+
+    case "partial_refund":
+    case "partially_refunded":
+    case "partial-refund":
+      return "Delvis refundering";
+
+    case "request_return":
+    case "return":
+      return "Returforløb";
+
+    default:
+      return null;
+  }
 }
 
 function StatusBadge({ status }: { status: DisputeStatus }) {

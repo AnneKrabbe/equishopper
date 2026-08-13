@@ -15,8 +15,6 @@ import Header from "@/components/home/Header";
 import StripeConnectCard from "@/components/profile/StripeConnectCard";
 import { supabase } from "@/lib/supabase";
 
-type LocationVisibility = "hidden" | "city" | "approximate";
-
 type ProfileForm = {
   fullName: string;
   username: string;
@@ -24,7 +22,6 @@ type ProfileForm = {
   address: string;
   postalCode: string;
   city: string;
-  locationVisibility: LocationVisibility;
 };
 
 type ProfileData = {
@@ -42,7 +39,7 @@ type ProfileData = {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
-  location_visibility: LocationVisibility | null;
+  location_visibility: string | null;
   phone_verified: boolean | null;
   identity_verified: boolean | null;
   average_rating: number | null;
@@ -84,7 +81,6 @@ const initialForm: ProfileForm = {
   address: "",
   postalCode: "",
   city: "",
-  locationVisibility: "approximate",
 };
 
 export default function ProfilePage() {
@@ -215,10 +211,6 @@ export default function ProfilePage() {
             profileData?.city ??
             user.user_metadata?.city ??
             "",
-
-          locationVisibility:
-            profileData?.location_visibility ??
-            "approximate",
         });
 
         const { data: notificationData, error: notificationError } =
@@ -581,8 +573,7 @@ export default function ProfilePage() {
             city: location.city,
             latitude: location.latitude,
             longitude: location.longitude,
-            location_visibility:
-              form.locationVisibility,
+            location_visibility: "city",
           },
           {
             onConflict: "id",
@@ -911,7 +902,7 @@ export default function ProfilePage() {
                   <DashboardLink
                     href="#profil"
                     title="Profiloplysninger"
-                    description="Rediger navn, adresse og privatliv."
+                    description="Rediger navn, adresse og lokation."
                     icon={<UserIcon />}
                   />
                 </div>
@@ -1224,66 +1215,6 @@ export default function ProfilePage() {
               </section>
 
               <section
-                id="privatliv"
-                className="scroll-mt-32"
-              >
-                <FormSection
-                  title="Privatliv og synlighed"
-                  description="Vælg, hvordan din lokation skal vises for andre."
-                >
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <PrivacyOption
-                      value="approximate"
-                      selected={
-                        form.locationVisibility
-                      }
-                      title="Omtrentligt område"
-                      description="Vis et omtrentligt område uden at vise din adresse."
-                      icon={<TargetIcon />}
-                      onChange={(value) =>
-                        updateField(
-                          "locationVisibility",
-                          value
-                        )
-                      }
-                    />
-
-                    <PrivacyOption
-                      value="city"
-                      selected={
-                        form.locationVisibility
-                      }
-                      title="Kun by"
-                      description="Andre brugere kan se den by, du bor i."
-                      icon={<BuildingIcon />}
-                      onChange={(value) =>
-                        updateField(
-                          "locationVisibility",
-                          value
-                        )
-                      }
-                    />
-
-                    <PrivacyOption
-                      value="hidden"
-                      selected={
-                        form.locationVisibility
-                      }
-                      title="Skjul lokation"
-                      description="Din lokation bliver ikke vist offentligt."
-                      icon={<HiddenIcon />}
-                      onChange={(value) =>
-                        updateField(
-                          "locationVisibility",
-                          value
-                        )
-                      }
-                    />
-                  </div>
-                </FormSection>
-              </section>
-
-              <section
                 id="statistik"
                 className="scroll-mt-32"
               >
@@ -1546,77 +1477,6 @@ function VerificationStatus({
         ? `${label} verificeret`
         : `${label} ikke verificeret`}
     </span>
-  );
-}
-
-type PrivacyOptionProps = {
-  value: LocationVisibility;
-  selected: LocationVisibility;
-  title: string;
-  description: string;
-  icon: ReactNode;
-  onChange: (value: LocationVisibility) => void;
-};
-
-function PrivacyOption({
-  value,
-  selected,
-  title,
-  description,
-  icon,
-  onChange,
-}: PrivacyOptionProps) {
-  const active = value === selected;
-
-  return (
-    <label
-      className={`relative flex cursor-pointer flex-col rounded-2xl border p-5 transition ${
-        active
-          ? "border-[#0b5a47] bg-[#f0f6f1] shadow-sm"
-          : "border-stone-200 bg-white hover:border-[#0b5a47]/40"
-      }`}
-    >
-      <input
-        type="radio"
-        name="locationVisibility"
-        value={value}
-        checked={active}
-        onChange={() => onChange(value)}
-        className="sr-only"
-      />
-
-      <div className="flex items-start justify-between gap-3">
-        <span
-          className={`flex h-10 w-10 items-center justify-center rounded-full ${
-            active
-              ? "bg-[#063f32] text-white"
-              : "bg-stone-100 text-stone-600"
-          }`}
-        >
-          {icon}
-        </span>
-
-        <span
-          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
-            active
-              ? "border-[#0b5a47]"
-              : "border-stone-300"
-          }`}
-        >
-          {active && (
-            <span className="h-2.5 w-2.5 rounded-full bg-[#0b5a47]" />
-          )}
-        </span>
-      </div>
-
-      <span className="mt-5 font-semibold text-[#063f32]">
-        {title}
-      </span>
-
-      <span className="mt-2 text-sm leading-6 text-stone-500">
-        {description}
-      </span>
-    </label>
   );
 }
 
@@ -1900,53 +1760,6 @@ function SaveIcon() {
     >
       <path d="M5 3h12l2 2v16H5V3Z" />
       <path d="M8 3v6h8V3M8 21v-7h8v7" />
-    </svg>
-  );
-}
-
-function TargetIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <circle cx="12" cy="12" r="8" />
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-    </svg>
-  );
-}
-
-function BuildingIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M5 21V5l7-3v19M12 8h7v13M2 21h20" />
-      <path d="M8 7h1M8 11h1M8 15h1M15 11h1M15 15h1" />
-    </svg>
-  );
-}
-
-function HiddenIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M3 3l18 18" />
-      <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" />
-      <path d="M9.4 5.2A11.5 11.5 0 0 1 12 5c5 0 8.6 4.4 9 5-.3.5-1.6 2.1-3.5 3.4M6.2 6.2C4.4 7.3 3.3 8.8 3 10c.4.8 3.8 5 9 5 .8 0 1.6-.1 2.3-.3" />
     </svg>
   );
 }

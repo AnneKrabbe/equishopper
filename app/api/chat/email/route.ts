@@ -250,6 +250,14 @@ export async function POST(request: NextRequest) {
         profiles,
       );
 
+      await createChatNotification({
+        userId: recipientId,
+        type: "new_message",
+        title: "Ny besked",
+        message: `${actorName} har sendt dig en besked om "${listing.title}".`,
+        href: `/beskeder/${conversation.id}`,
+      });
+
       const result = await sendNewMessageEmail({
         to: recipient,
         props: {
@@ -331,6 +339,14 @@ export async function POST(request: NextRequest) {
         profiles,
       );
 
+      await createChatNotification({
+        userId: conversation.seller_id,
+        type: "new_offer",
+        title: "Nyt bud",
+        message: `${actorName} har budt ${formatMoney(offer.amount)} på "${listing.title}".`,
+        href: `/beskeder/${conversation.id}`,
+      });
+
       const result = await sendNewOfferEmail({
         to: recipient,
         props: {
@@ -377,6 +393,14 @@ export async function POST(request: NextRequest) {
 
         originalOfferAmount = parentOffer?.amount ?? null;
       }
+
+      await createChatNotification({
+        userId: recipientId,
+        type: "counter_offer",
+        title: "Nyt modbud",
+        message: `${actorName} har sendt dig et modbud på ${formatMoney(offer.amount)} på "${listing.title}".`,
+        href: `/beskeder/${conversation.id}`,
+      });
 
       const result = await sendCounterOfferEmail({
         to: recipient,
@@ -433,6 +457,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      await createChatNotification({
+        userId: offerSenderId,
+        type: "offer_accepted",
+        title: "Dit bud er accepteret",
+        message: `Dit bud på ${formatMoney(offer.amount)} på "${listing.title}" er blevet accepteret.`,
+        href: `/beskeder/${conversation.id}`,
+      });
+
       const result = await sendOfferAcceptedEmail({
         to: recipient,
         props: {
@@ -465,6 +497,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await createChatNotification({
+      userId: offerSenderId,
+      type: "offer_rejected",
+      title: "Dit bud er afslået",
+      message: `Dit bud på ${formatMoney(offer.amount)} på "${listing.title}" er blevet afslået.`,
+      href: `/beskeder/${conversation.id}`,
+    });
+
     const result = await sendOfferRejectedEmail({
       to: recipient,
       props: {
@@ -493,6 +533,44 @@ export async function POST(request: NextRequest) {
             : "Mailen kunne ikke sendes.",
       },
       { status: 500 },
+    );
+  }
+}
+
+type ChatNotificationType =
+  | "new_message"
+  | "new_offer"
+  | "counter_offer"
+  | "offer_accepted"
+  | "offer_rejected";
+
+async function createChatNotification({
+  userId,
+  type,
+  title,
+  message,
+  href,
+}: {
+  userId: string;
+  type: ChatNotificationType;
+  title: string;
+  message: string;
+  href: string;
+}) {
+  const { error } = await supabaseAdmin
+    .from("notifications")
+    .insert({
+      user_id: userId,
+      order_id: null,
+      notification_type: type,
+      title,
+      message,
+      href,
+    });
+
+  if (error) {
+    throw new Error(
+      `Notifikationen kunne ikke oprettes: ${error.message}`,
     );
   }
 }

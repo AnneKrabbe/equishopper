@@ -892,7 +892,7 @@ const response = await fetch("/api/reviews", {
 
       {disputeIntroOrder && (
         <div
-          className="fixed inset-0 z-[125] flex items-center justify-center bg-black/55 px-4 py-8 backdrop-blur-sm"
+          className="fixed inset-0 z-[125] overflow-y-auto bg-black/55 px-4 py-8 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="dispute-intro-title"
@@ -902,102 +902,107 @@ const response = await fetch("/api/reviews", {
             }
           }}
         >
-          <div className="w-full max-w-lg rounded-[28px] border border-[#eadfcb] bg-[#fbfaf7] p-6 shadow-2xl md:p-8">
-            <div className="flex items-start justify-between gap-5">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#b79a3d]">
-                  Før du opretter en tvist
-                </p>
-
-                <h2
-                  id="dispute-intro-title"
-                  className="mt-2 font-serif text-3xl text-[#063f32]"
-                >
-                  Se hvordan vi behandler tvister
-                </h2>
-
-                <p className="mt-3 text-sm leading-6 text-stone-600">
-                  Vi anbefaler, at du læser vores guide, før du
-                  opretter sagen. Her kan du se, hvad Equishopper
-                  lægger vægt på, hvilke typer afgørelser der kan
-                  træffes, og eksempler på typiske tvister.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setDisputeIntroOrder(null)}
-                className="rounded-full p-2 text-stone-500 transition hover:bg-white hover:text-[#063f32]"
-                aria-label="Luk"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {disputeIntroOrder.items[0] && (
-              <div className="mt-6 flex items-center gap-4 rounded-2xl border border-[#eadfcb] bg-white p-4">
-                <div className="h-16 w-14 flex-none overflow-hidden rounded-xl bg-[#eee8dc]">
-                  {disputeIntroOrder.items[0].imageUrl ? (
-                    <img
-                      src={disputeIntroOrder.items[0].imageUrl}
-                      alt={disputeIntroOrder.items[0].title_snapshot}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <Package className="h-5 w-5 text-stone-400" />
-                    </div>
-                  )}
-                </div>
-
+          <div className="flex min-h-full items-start justify-center pt-24 sm:pt-28 md:items-center md:pt-20">
+            <div className="w-full max-w-[520px] rounded-[30px] border border-[#eadfcb] bg-[#fbfaf7] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.24)] md:p-8">
+              <div className="flex items-start justify-between gap-5">
                 <div className="min-w-0">
-                  <p className="truncate font-semibold text-[#063f32]">
-                    {disputeIntroOrder.items[0].title_snapshot}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#b79a3d]">
+                    Før du opretter en tvist
                   </p>
-                  <p className="mt-1 text-xs text-stone-500">
-                    Ordre #
-                    {disputeIntroOrder.id.slice(0, 8).toUpperCase()}
+
+                  <h2
+                    id="dispute-intro-title"
+                    className="mt-2 max-w-sm font-serif text-[30px] leading-[1.08] text-[#063f32] sm:text-3xl"
+                  >
+                    Se hvordan vi behandler tvister
+                  </h2>
+
+                  <p className="mt-3 max-w-md text-sm leading-6 text-stone-600">
+                    Vi anbefaler, at du læser vores guide, før du
+                    opretter sagen. Her kan du se, hvad Equishopper
+                    lægger vægt på, hvilke typer afgørelser der kan
+                    træffes, og eksempler på typiske tvister.
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDisputeIntroOrder(null)}
+                  className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-[#e4ded3] bg-white text-stone-500 transition hover:border-[#cfc7b8] hover:text-[#063f32]"
+                  aria-label="Luk"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-            )}
 
-            <div className="mt-6 rounded-2xl border border-[#d4af37]/35 bg-[#fffdf7] p-5">
-              <p className="text-sm font-semibold text-[#063f32]">
-                Dokumentation er vigtig
-              </p>
-              <p className="mt-2 text-sm leading-6 text-stone-600">
-                Husk at uploade den dokumentation, du bliver
-                opfordret til i forbindelse med forsendelse,
-                modtagelse og selve tvistsagen.
-              </p>
+              {disputeIntroOrder.items[0] && (
+                <div className="mt-6 flex items-center gap-4 rounded-2xl border border-[#eadfcb] bg-white p-4">
+                  <div className="h-16 w-14 flex-none overflow-hidden rounded-xl bg-[#eee8dc]">
+                    {disputeIntroOrder.items[0].imageUrl ? (
+                      <img
+                        src={disputeIntroOrder.items[0].imageUrl}
+                        alt={disputeIntroOrder.items[0].title_snapshot}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <Package className="h-5 w-5 text-stone-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-[#063f32]">
+                      {disputeIntroOrder.items[0].title_snapshot}
+                    </p>
+
+                    <p className="mt-1 text-xs text-stone-500">
+                      Ordre #
+                      {disputeIntroOrder.id.slice(0, 8).toUpperCase()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl border border-[#d4af37]/30 bg-[#fffdf8] p-4">
+                <p className="text-sm font-semibold text-[#063f32]">
+                  Dokumentation er vigtig
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  Husk at uploade den dokumentation, du bliver
+                  opfordret til i forbindelse med forsendelse,
+                  modtagelse og selve tvistsagen.
+                </p>
+              </div>
+
+              <div className="mt-7">
+                <Link
+                  href={`/profil/tvister/opret/${disputeIntroOrder.id}`}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[#063f32] px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#052f26]"
+                >
+                  Opret tvist
+                </Link>
+
+                <Link
+                  href="/hjaelp/tvister"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#d8d1c5] bg-white px-6 py-3 text-sm font-semibold text-[#063f32] transition hover:border-[#0b5a47] hover:bg-[#f3f7f4]"
+                >
+                  Læs om tvistbehandling
+                  <span aria-hidden="true">→</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setDisputeIntroOrder(null)}
+                  className="mt-3 w-full py-2 text-center text-sm font-medium text-stone-500 transition hover:text-[#063f32]"
+                >
+                  Annuller
+                </button>
+              </div>
             </div>
-
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/hjaelp/tvister"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex flex-1 items-center justify-center rounded-full border border-[#0b5a47] px-5 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#edf4ef]"
-              >
-                Læs om tvistbehandling
-              </Link>
-
-              <Link
-                href={`/profil/tvister/opret/${disputeIntroOrder.id}`}
-                className="inline-flex flex-1 items-center justify-center rounded-full bg-[#063f32] px-5 py-3.5 font-semibold text-white transition hover:bg-[#052f26]"
-              >
-                Fortsæt til opret tvist
-              </Link>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setDisputeIntroOrder(null)}
-              className="mt-4 w-full text-center text-sm font-medium text-stone-500 transition hover:text-[#063f32]"
-            >
-              Annuller
-            </button>
           </div>
         </div>
       )}

@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import BrandAutocomplete from "@/components/BrandAutocomplete";
 import { supabase } from "@/lib/supabase";
 import {
   getAllSubcategories,
@@ -24,6 +23,7 @@ const categories = [
   "Til rytteren",
   "Til stalden",
 ];
+
 const conditions = [
   "Som ny",
   "Meget god stand",
@@ -37,7 +37,7 @@ const MAX_PRICE_LIMIT = 50000;
 
 function parsePrice(
   value: string | null,
-  fallback: number
+  fallback: number,
 ): number {
   if (!value) {
     return fallback;
@@ -54,6 +54,9 @@ function formatPrice(value: number): string {
   return new Intl.NumberFormat("da-DK").format(value);
 }
 
+const fieldClass =
+  "w-full rounded-xl border border-[#cfc8bc] bg-white px-4 py-3 text-sm font-medium text-[#063f32] shadow-sm outline-none transition placeholder:text-[#77736c] focus:border-[#d4af37] focus:ring-2 focus:ring-[#d4af37]/20 disabled:cursor-not-allowed disabled:bg-[#f1eee8] disabled:text-[#77736c]";
+
 export default function FilterSidebar({
   categoryName,
   listingsCount,
@@ -62,66 +65,158 @@ export default function FilterSidebar({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const selectedGroup = searchParams.get("group") || "";
-  const selectedSubcategory =
-    searchParams.get("subcategory") || "";
-  const selectedSize = searchParams.get("size") || "";
-  const selectedCondition =
-    searchParams.get("condition") || "";
-
-  const minPriceFromUrl = parsePrice(
-    searchParams.get("minPrice"),
-    MIN_PRICE_LIMIT
+  /*
+   * URL-parametrene er de filtre, der allerede er anvendt.
+   * Alle felterne nedenfor er derimod lokale "kladde"-filtre.
+   * Derfor loader annonceoversigten først igen, når brugeren
+   * trykker "Vis annoncer".
+   */
+  const [draftCategory, setDraftCategory] = useState(
+    categoryName || "Alle kategorier",
   );
-
-  const maxPriceFromUrl = parsePrice(
-    searchParams.get("maxPrice"),
-    MAX_PRICE_LIMIT
+  const [draftGroup, setDraftGroup] = useState(
+    searchParams.get("group") || "",
   );
-
-  const [sizeOptions, setSizeOptions] = useState<string[]>([]);
+  const [draftSubcategory, setDraftSubcategory] = useState(
+    searchParams.get("subcategory") || "",
+  );
+  const [draftSize, setDraftSize] = useState(
+    searchParams.get("size") || "",
+  );
+  const [draftBrand, setDraftBrand] = useState(
+    searchParams.get("brand") || "",
+  );
+  const [draftCondition, setDraftCondition] = useState(
+    searchParams.get("condition") || "",
+  );
+  const [draftSort, setDraftSort] = useState(
+    searchParams.get("sort") || "newest",
+  );
 
   const [minPrice, setMinPrice] = useState(
-    minPriceFromUrl.toString()
+    parsePrice(
+      searchParams.get("minPrice"),
+      MIN_PRICE_LIMIT,
+    ).toString(),
   );
-
   const [maxPrice, setMaxPrice] = useState(
-    maxPriceFromUrl.toString()
+    parsePrice(
+      searchParams.get("maxPrice"),
+      MAX_PRICE_LIMIT,
+    ).toString(),
   );
 
+  /*
+   * Afstand er endnu ikke koblet til serverfiltreringen.
+   * Vi beholder felterne visuelt, men uden at udløse navigation.
+   */
+  const [postalCode, setPostalCode] = useState("");
+  const [maxDistance, setMaxDistance] = useState("");
+
+  const [sizeOptions, setSizeOptions] = useState<string[]>([]);
+  const [brandOptions, setBrandOptions] = useState<string[]>([]);
   const [priceError, setPriceError] = useState("");
 
-  const groups = getCategoryGroups(categoryName);
+  const groups = useMemo(
+    () => getCategoryGroups(draftCategory),
+    [draftCategory],
+  );
 
-  const subcategories =
-    categoryName === "Til hesten"
-      ? selectedGroup
-        ? getSubcategories(categoryName, selectedGroup)
-        : getAllSubcategories(categoryName)
-      : getAllSubcategories(categoryName);
+  const subcategories = useMemo(() => {
+    if (draftCategory === "Til hesten") {
+      return draftGroup
+        ? getSubcategories(draftCategory, draftGroup)
+        : getAllSubcategories(draftCategory);
+    }
 
+    return getAllSubcategories(draftCategory);
+  }, [draftCategory, draftGroup]);
+
+  /*
+   * Hvis URL'en ændrer sig efter et faktisk submit,
+   * synkroniserer vi formularens kladde med de anvendte filtre.
+   */
   useEffect(() => {
-    setMinPrice(minPriceFromUrl.toString());
-    setMaxPrice(maxPriceFromUrl.toString());
+    setDraftCategory(
+      searchParams.get("category") || "Alle kategorier",
+    );
+    setDraftGroup(searchParams.get("group") || "");
+    setDraftSubcategory(
+      searchParams.get("subcategory") || "",
+    );
+    setDraftSize(searchParams.get("size") || "");
+    setDraftBrand(searchParams.get("brand") || "");
+    setDraftCondition(
+      searchParams.get("condition") || "",
+    );
+    setDraftSort(searchParams.get("sort") || "newest");
+    setMinPrice(
+      parsePrice(
+        searchParams.get("minPrice"),
+        MIN_PRICE_LIMIT,
+      ).toString(),
+    );
+    setMaxPrice(
+      parsePrice(
+        searchParams.get("maxPrice"),
+        MAX_PRICE_LIMIT,
+      ).toString(),
+    );
     setPriceError("");
-  }, [minPriceFromUrl, maxPriceFromUrl]);
+  }, [searchParams]);
+
+  /*
+   * Hent brands til datalist. Det giver autocomplete uden at
+   * Brand-feltet selv ændrer URL'en eller refresher siden.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchBrands() {
+      const { data, error } = await supabase
+        .from("brands")
+        .select("name")
+        .order("name");
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Kunne ikke hente brands:", error);
+        setBrandOptions([]);
+        return;
+      }
+
+      const names = (data ?? [])
+        .map((item) => item.name)
+        .filter(
+          (name): name is string =>
+            typeof name === "string" && name.trim().length > 0,
+        );
+
+      setBrandOptions(names);
+    }
+
+    void fetchBrands();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
 
     async function fetchSizes() {
-      if (!selectedSubcategory) {
-        setSizeOptions([]);
-        return;
-      }
-
-      if (selectedSubcategory === "Piske") {
+      if (
+        !draftSubcategory ||
+        draftSubcategory === "Piske"
+      ) {
         setSizeOptions([]);
         return;
       }
 
       const sizeType =
-        getSizeTypeForSubcategory(selectedSubcategory);
+        getSizeTypeForSubcategory(draftSubcategory);
 
       if (!sizeType) {
         setSizeOptions([]);
@@ -134,9 +229,7 @@ export default function FilterSidebar({
         .eq("type", sizeType)
         .order("sort_order");
 
-      if (isCancelled) {
-        return;
-      }
+      if (isCancelled) return;
 
       if (error) {
         console.error("Kunne ikke hente størrelser:", error);
@@ -145,119 +238,36 @@ export default function FilterSidebar({
       }
 
       setSizeOptions(
-        data?.map((item) => item.name).filter(Boolean) ?? []
+        data?.map((item) => item.name).filter(Boolean) ?? [],
       );
     }
 
-    fetchSizes();
+    void fetchSizes();
 
     return () => {
       isCancelled = true;
     };
-  }, [selectedSubcategory]);
+  }, [draftSubcategory]);
 
-  function navigateWithParams(params: URLSearchParams) {
-    const queryString = params.toString();
-
-    router.push(
-      queryString ? `/annoncer?${queryString}` : "/annoncer"
-    );
+  function handleCategoryChange(value: string) {
+    setDraftCategory(value);
+    setDraftGroup("");
+    setDraftSubcategory("");
+    setDraftSize("");
   }
 
-  function updateCategory(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    params.delete("group");
-    params.delete("subcategory");
-    params.delete("size");
-
-    if (value === "Alle kategorier") {
-      params.delete("category");
-    } else {
-      params.set("category", value);
-    }
-
-    navigateWithParams(params);
+  function handleGroupChange(value: string) {
+    setDraftGroup(value);
+    setDraftSubcategory("");
+    setDraftSize("");
   }
 
-  function updateGroup(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    params.delete("subcategory");
-    params.delete("size");
-
-    if (value) {
-      params.set("group", value);
-    } else {
-      params.delete("group");
-    }
-
-    navigateWithParams(params);
+  function handleSubcategoryChange(value: string) {
+    setDraftSubcategory(value);
+    setDraftSize("");
   }
 
-  function updateSubcategory(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    params.delete("size");
-
-    if (value) {
-      params.set("subcategory", value);
-    } else {
-      params.delete("subcategory");
-    }
-
-    navigateWithParams(params);
-  }
-
-  function updateSize(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    if (value) {
-      params.set("size", value);
-    } else {
-      params.delete("size");
-    }
-
-    navigateWithParams(params);
-  }
-
-  function updateCondition(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    if (value) {
-      params.set("condition", value);
-    } else {
-      params.delete("condition");
-    }
-
-    navigateWithParams(params);
-  }
-
-  function updateSort(value: string) {
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    if (value === "newest") {
-      params.delete("sort");
-    } else {
-      params.set("sort", value);
-    }
-
-    navigateWithParams(params);
-  }
-
-  function applyPriceFilter() {
+  function validatePrices() {
     const parsedMinPrice =
       minPrice.trim() === ""
         ? MIN_PRICE_LIMIT
@@ -273,7 +283,7 @@ export default function FilterSidebar({
       !Number.isFinite(parsedMaxPrice)
     ) {
       setPriceError("Indtast gyldige priser.");
-      return;
+      return null;
     }
 
     if (
@@ -282,62 +292,108 @@ export default function FilterSidebar({
     ) {
       setPriceError(
         `Prisen skal være mellem ${formatPrice(
-          MIN_PRICE_LIMIT
-        )} og ${formatPrice(MAX_PRICE_LIMIT)} kr.`
+          MIN_PRICE_LIMIT,
+        )} og ${formatPrice(MAX_PRICE_LIMIT)} kr.`,
       );
-      return;
+      return null;
     }
 
     if (parsedMinPrice > parsedMaxPrice) {
       setPriceError(
-        "Minimumsprisen må ikke være højere end maksimumsprisen."
+        "Minimumsprisen må ikke være højere end maksimumsprisen.",
       );
-      return;
+      return null;
     }
 
     setPriceError("");
 
-    const params = new URLSearchParams(
-      searchParams.toString()
-    );
-
-    if (parsedMinPrice > MIN_PRICE_LIMIT) {
-      params.set("minPrice", parsedMinPrice.toString());
-    } else {
-      params.delete("minPrice");
-    }
-
-    if (parsedMaxPrice < MAX_PRICE_LIMIT) {
-      params.set("maxPrice", parsedMaxPrice.toString());
-    } else {
-      params.delete("maxPrice");
-    }
-
-    navigateWithParams(params);
+    return {
+      min: parsedMinPrice,
+      max: parsedMaxPrice,
+    };
   }
 
-  function resetPriceFilter() {
-    const params = new URLSearchParams(
-      searchParams.toString()
+  function applyFilters() {
+    const prices = validatePrices();
+
+    if (!prices) return;
+
+    /*
+     * Bevar søgefeltet q, hvis brugeren allerede har søgt,
+     * men byg resten af filterparametrene fra kladden.
+     */
+    const params = new URLSearchParams();
+
+    const q = searchParams.get("q");
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (draftCategory !== "Alle kategorier") {
+      params.set("category", draftCategory);
+    }
+
+    if (draftGroup) {
+      params.set("group", draftGroup);
+    }
+
+    if (draftSubcategory) {
+      params.set("subcategory", draftSubcategory);
+    }
+
+    if (draftSize) {
+      params.set("size", draftSize);
+    }
+
+    if (draftBrand.trim()) {
+      params.set("brand", draftBrand.trim());
+    }
+
+    if (draftCondition) {
+      params.set("condition", draftCondition);
+    }
+
+    if (prices.min > MIN_PRICE_LIMIT) {
+      params.set("minPrice", prices.min.toString());
+    }
+
+    if (prices.max < MAX_PRICE_LIMIT) {
+      params.set("maxPrice", prices.max.toString());
+    }
+
+    if (draftSort !== "newest") {
+      params.set("sort", draftSort);
+    }
+
+    const queryString = params.toString();
+
+    router.push(
+      queryString
+        ? `/annoncer?${queryString}`
+        : "/annoncer",
     );
 
-    params.delete("minPrice");
-    params.delete("maxPrice");
-
-    setMinPrice(MIN_PRICE_LIMIT.toString());
-    setMaxPrice(MAX_PRICE_LIMIT.toString());
-    setPriceError("");
-
-    navigateWithParams(params);
+    onClose?.();
   }
 
   function resetFilters() {
-    router.push("/annoncer");
+    setDraftCategory("Alle kategorier");
+    setDraftGroup("");
+    setDraftSubcategory("");
+    setDraftSize("");
+    setDraftBrand("");
+    setDraftCondition("");
+    setDraftSort("newest");
+    setMinPrice(MIN_PRICE_LIMIT.toString());
+    setMaxPrice(MAX_PRICE_LIMIT.toString());
+    setPostalCode("");
+    setMaxDistance("");
+    setPriceError("");
   }
 
   return (
-    <aside className="relative z-50 h-fit rounded-[2rem] border border-stone-200 bg-white p-8 lg:sticky lg:top-8">
-      <div className="mb-8 flex items-center justify-between">
+    <aside className="relative z-50 h-fit rounded-[2rem] border border-[#ded8ce] bg-white p-6 text-[#063f32] shadow-sm sm:p-8 lg:sticky lg:top-8">
+      <div className="mb-8 flex items-center justify-between gap-4">
         <h2 className="font-serif text-3xl text-[#063f32]">
           Filtre
         </h2>
@@ -345,7 +401,7 @@ export default function FilterSidebar({
         <button
           type="button"
           onClick={resetFilters}
-          className="text-sm text-stone-500 underline"
+          className="text-sm font-medium text-[#55514b] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#063f32]"
         >
           Nulstil alle
         </button>
@@ -353,17 +409,17 @@ export default function FilterSidebar({
 
       <div className="space-y-8">
         {/* SORTERING */}
-        <div className="border-t border-stone-200 pt-6">
+        <div className="border-t border-[#ded8ce] pt-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
             Sortering
           </p>
 
           <select
-            value={searchParams.get("sort") || "newest"}
+            value={draftSort}
             onChange={(event) =>
-              updateSort(event.target.value)
+              setDraftSort(event.target.value)
             }
-            className="w-full rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+            className={`${fieldClass} cursor-pointer`}
           >
             <option value="newest">Nyeste først</option>
             <option value="popular">Mest populære</option>
@@ -373,17 +429,17 @@ export default function FilterSidebar({
         </div>
 
         {/* HOVEDKATEGORI */}
-        <div className="border-t border-stone-200 pt-6">
+        <div className="border-t border-[#ded8ce] pt-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
             Kategori
           </p>
 
           <select
-            value={categoryName}
+            value={draftCategory}
             onChange={(event) =>
-              updateCategory(event.target.value)
+              handleCategoryChange(event.target.value)
             }
-            className="w-full cursor-pointer rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+            className={`${fieldClass} cursor-pointer`}
           >
             {categories.map((category) => (
               <option key={category} value={category}>
@@ -394,18 +450,18 @@ export default function FilterSidebar({
         </div>
 
         {/* GRUPPE */}
-        {categoryName === "Til hesten" && (
-          <div className="border-t border-stone-200 pt-6">
+        {draftCategory === "Til hesten" && (
+          <div className="border-t border-[#ded8ce] pt-6">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
               Gruppe
             </p>
 
             <select
-              value={selectedGroup}
+              value={draftGroup}
               onChange={(event) =>
-                updateGroup(event.target.value)
+                handleGroupChange(event.target.value)
               }
-              className="w-full cursor-pointer rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+              className={`${fieldClass} cursor-pointer`}
             >
               <option value="">Alle grupper</option>
 
@@ -419,24 +475,24 @@ export default function FilterSidebar({
         )}
 
         {/* UNDERKATEGORI */}
-        <div className="border-t border-stone-200 pt-6">
+        <div className="border-t border-[#ded8ce] pt-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
             Underkategori
           </p>
 
           <select
-            value={selectedSubcategory}
+            value={draftSubcategory}
             onChange={(event) =>
-              updateSubcategory(event.target.value)
+              handleSubcategoryChange(event.target.value)
             }
             disabled={
-              categoryName === "Alle kategorier" ||
+              draftCategory === "Alle kategorier" ||
               subcategories.length === 0
             }
-            className="w-full cursor-pointer rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37] disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+            className={`${fieldClass} cursor-pointer`}
           >
             <option value="">
-              {categoryName === "Alle kategorier"
+              {draftCategory === "Alle kategorier"
                 ? "Vælg først kategori"
                 : "Alle underkategorier"}
             </option>
@@ -456,36 +512,39 @@ export default function FilterSidebar({
         </div>
 
         {/* BRAND */}
-        <div className="border-t border-stone-200 pt-6">
+        <div className="border-t border-[#ded8ce] pt-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
             Brand
           </p>
 
-          <BrandAutocomplete />
+          <input
+            type="text"
+            list="equishopper-brand-options"
+            value={draftBrand}
+            onChange={(event) =>
+              setDraftBrand(event.target.value)
+            }
+            placeholder="Alle brands"
+            autoComplete="off"
+            className={fieldClass}
+          />
+
+          <datalist id="equishopper-brand-options">
+            {brandOptions.map((brand) => (
+              <option key={brand} value={brand} />
+            ))}
+          </datalist>
         </div>
 
         {/* PRIS */}
-        <div className="border-t border-stone-200 pt-6">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
-              Pris
-            </p>
-
-            {(minPriceFromUrl > MIN_PRICE_LIMIT ||
-              maxPriceFromUrl < MAX_PRICE_LIMIT) && (
-              <button
-                type="button"
-                onClick={resetPriceFilter}
-                className="text-xs text-stone-500 underline"
-              >
-                Nulstil pris
-              </button>
-            )}
-          </div>
+        <div className="border-t border-[#ded8ce] pt-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
+            Pris
+          </p>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-2 block text-xs text-stone-500">
+              <span className="mb-2 block text-xs font-medium text-[#55514b]">
                 Minimum
               </span>
 
@@ -501,23 +560,17 @@ export default function FilterSidebar({
                     setMinPrice(event.target.value);
                     setPriceError("");
                   }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      applyPriceFilter();
-                    }
-                  }}
-                  className="w-full rounded-xl border border-stone-200 bg-[#fbfaf7] px-3 py-3 pr-8 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+                  className={`${fieldClass} pr-9`}
                 />
 
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-[#55514b]">
                   kr.
                 </span>
               </div>
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-xs text-stone-500">
+              <span className="mb-2 block text-xs font-medium text-[#55514b]">
                 Maksimum
               </span>
 
@@ -533,16 +586,10 @@ export default function FilterSidebar({
                     setMaxPrice(event.target.value);
                     setPriceError("");
                   }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      applyPriceFilter();
-                    }
-                  }}
-                  className="w-full rounded-xl border border-stone-200 bg-[#fbfaf7] px-3 py-3 pr-8 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+                  className={`${fieldClass} pr-9`}
                 />
 
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-[#55514b]">
                   kr.
                 </span>
               </div>
@@ -550,59 +597,67 @@ export default function FilterSidebar({
           </div>
 
           {priceError && (
-            <p className="mt-3 text-xs leading-5 text-red-600">
+            <p className="mt-3 text-xs font-medium leading-5 text-red-700">
               {priceError}
             </p>
           )}
-
-          <button
-            type="button"
-            onClick={applyPriceFilter}
-            className="mt-4 w-full rounded-xl border border-[#063f32] px-4 py-3 text-sm font-medium text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
-          >
-            Anvend pris
-          </button>
         </div>
 
         {/* AFSTAND */}
-        <div className="border-t border-stone-200 pt-6">
+        <div className="border-t border-[#ded8ce] pt-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
             Afstand
           </p>
 
           <input
+            value={postalCode}
+            onChange={(event) =>
+              setPostalCode(event.target.value)
+            }
+            inputMode="numeric"
             placeholder="Postnummer"
-            className="mb-3 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none"
+            className={`${fieldClass} mb-3`}
           />
 
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-left text-sm"
+          <select
+            value={maxDistance}
+            onChange={(event) =>
+              setMaxDistance(event.target.value)
+            }
+            className={`${fieldClass} cursor-pointer`}
           >
-            <span>Maks. afstand</span>
-            <span className="text-[#d4af37]">⌄</span>
-          </button>
+            <option value="">Maks. afstand</option>
+            <option value="10">10 km</option>
+            <option value="25">25 km</option>
+            <option value="50">50 km</option>
+            <option value="100">100 km</option>
+            <option value="200">200 km</option>
+          </select>
+
+          <p className="mt-2 text-xs leading-5 text-[#68635c]">
+            Afstandsfilteret bliver koblet til lokationssøgningen separat.
+          </p>
         </div>
 
         {/* STAND */}
-        <div className="border-t border-stone-200 pt-6">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="border-t border-[#ded8ce] pt-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
               Stand
             </p>
 
-            {selectedCondition && (
+            {draftCondition && (
               <button
                 type="button"
-                onClick={() => updateCondition("")}
-                className="text-xs text-stone-500 underline"
+                onClick={() => setDraftCondition("")}
+                className="text-xs font-medium text-[#55514b] underline decoration-[#d4af37] underline-offset-4"
               >
                 Nulstil stand
               </button>
             )}
           </div>
 
-          <div className="space-y-3 text-sm text-[#063f32]">
+          <div className="space-y-3 text-sm font-medium text-[#063f32]">
             {conditions.map((condition) => (
               <label
                 key={condition}
@@ -612,8 +667,10 @@ export default function FilterSidebar({
                   type="radio"
                   name="condition"
                   value={condition}
-                  checked={selectedCondition === condition}
-                  onChange={() => updateCondition(condition)}
+                  checked={draftCondition === condition}
+                  onChange={() =>
+                    setDraftCondition(condition)
+                  }
                   className="h-4 w-4 accent-[#063f32]"
                 />
 
@@ -624,20 +681,20 @@ export default function FilterSidebar({
         </div>
 
         {/* STØRRELSE */}
-        {selectedSubcategory &&
-          selectedSubcategory !== "Piske" &&
+        {draftSubcategory &&
+          draftSubcategory !== "Piske" &&
           sizeOptions.length > 0 && (
-            <div className="border-t border-stone-200 pt-6">
+            <div className="border-t border-[#ded8ce] pt-6">
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#063f32]">
                 Størrelse
               </p>
 
               <select
-                value={selectedSize}
+                value={draftSize}
                 onChange={(event) =>
-                  updateSize(event.target.value)
+                  setDraftSize(event.target.value)
                 }
-                className="w-full cursor-pointer rounded-xl border border-stone-200 bg-[#fbfaf7] px-4 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
+                className={`${fieldClass} cursor-pointer`}
               >
                 <option value="">Alle størrelser</option>
 
@@ -652,11 +709,15 @@ export default function FilterSidebar({
 
         <button
           type="button"
-          onClick={onClose}
-          className="w-full rounded-xl bg-[#063f32] px-5 py-4 text-sm font-medium text-white"
+          onClick={applyFilters}
+          className="w-full rounded-xl bg-[#063f32] px-5 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#052f26] focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
         >
-          Vis {listingsCount} annoncer
+          Vis annoncer
         </button>
+
+        <p className="text-center text-xs text-[#68635c]">
+          Der vises i øjeblikket {listingsCount} annoncer.
+        </p>
       </div>
     </aside>
   );

@@ -86,6 +86,10 @@ export default function ListingPage({
   const [sellerListings, setSellerListings] = useState<Listing[]>([]);
 
   const [isFavorite, setIsFavorite] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [savingWeLove, setSavingWeLove] = useState(false);
+  const [weLoveError, setWeLoveError] = useState("");
   const [activeImage, setActiveImage] = useState(0);
 
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -244,13 +248,29 @@ export default function ListingPage({
 
       const { data: userData } = await supabase.auth.getUser();
 
+      setCurrentUserId(userData.user?.id ?? null);
+
       if (userData.user) {
-        const { data: favoriteData, error: favoriteError } = await supabase
-          .from("favorites")
-          .select("id")
-          .eq("user_id", userData.user.id)
-          .eq("listing_id", id)
-          .maybeSingle();
+        const [{ data: favoriteData, error: favoriteError }, { data: profileData, error: profileRoleError }] =
+          await Promise.all([
+            supabase
+              .from("favorites")
+              .select("id")
+              .eq("user_id", userData.user.id)
+              .eq("listing_id", id)
+              .maybeSingle(),
+            supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", userData.user.id)
+              .maybeSingle(),
+          ]);
+
+        if (profileRoleError) {
+          console.log("Fejl ved kontrol af adminrolle:", profileRoleError);
+        }
+
+        setIsAdmin(profileData?.role === "admin");
 
         if (favoriteError) {
           console.log("Fejl ved kontrol af favorit:", favoriteError);
@@ -321,6 +341,9 @@ export default function ListingPage({
   const sellerProfileHref = sellerProfile
     ? `/profile/${sellerProfile.username || sellerProfile.id}`
     : "#";
+
+  const isOwnListing =
+    Boolean(currentUserId) && currentUserId === listing.seller_id;
 
   const categoryHref = listing.main_category
     ? `/category/${createSlug(listing.main_category)}`
@@ -456,6 +479,46 @@ export default function ListingPage({
           }
         : current
     );
+  }
+
+
+  async function toggleWeLove() {
+    if (!listing || !isAdmin || savingWeLove) return;
+
+    try {
+      setSavingWeLove(true);
+      setWeLoveError("");
+
+      const nextValue = !Boolean(listing.is_we_love);
+
+      const { error } = await supabase
+        .from("listings")
+        .update({ is_we_love: nextValue })
+        .eq("id", listing.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setListing((current) =>
+        current
+          ? {
+              ...current,
+              is_we_love: nextValue,
+            }
+          : current
+      );
+    } catch (error) {
+      console.error("Kunne ikke opdatere We Love:", error);
+
+      setWeLoveError(
+        error instanceof Error
+          ? error.message
+          : "We Love-status kunne ikke opdateres."
+      );
+    } finally {
+      setSavingWeLove(false);
+    }
   }
 
 
@@ -741,6 +804,7 @@ export default function ListingPage({
                   </div>
                 )}
 
+                {!isOwnListing && (
                 <button
                   type="button"
                   onClick={toggleFavorite}
@@ -755,6 +819,7 @@ export default function ListingPage({
                     <HeartIconOutline className="h-6 w-6" />
                   )}
                 </button>
+                )}
 
                 {images[activeImage] ? (
                   <button
@@ -876,6 +941,7 @@ export default function ListingPage({
         )}
       </div>
 
+      {!isOwnListing && (
       <button
         type="button"
         onClick={toggleFavorite}
@@ -890,6 +956,7 @@ export default function ListingPage({
           <HeartIconOutline className="h-6 w-6" />
         )}
       </button>
+      )}
     </div>
 
     <p className="mt-6 text-3xl font-semibold text-black">
@@ -921,61 +988,83 @@ export default function ListingPage({
     </div>
 
     <div className="space-y-3">
-      <button
-        type="button"
-        onClick={handleBuyNow}
-        disabled={
-          buyingNow ||
-          Boolean(listing.reserved_by) ||
-          Boolean(
-            listing.status &&
-              listing.status.toLowerCase() !== "active"
-          )
-        }
-        className="flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {buyingNow ? (
-          <Loader2 className="h-5 w-5 animate-spin" />
-        ) : (
-          <ShoppingCart className="h-5 w-5" />
-        )}
+      {isOwnListing ? (
+        <>
+          <Link
+            href={`/listing/${listing.id}/rediger`}
+            className="flex w-full items-center justify-center rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a]"
+          >
+            Rediger annonce
+          </Link>
 
-        {buyingNow
-          ? "Lægger i kurven..."
-          : listing.reserved_by ||
-              (listing.status &&
-                listing.status.toLowerCase() !== "active")
-            ? "Varen er reserveret"
-            : "Køb nu"}
-      </button>
+          <Link
+            href="/beskeder"
+            className="flex w-full items-center justify-center rounded-full border border-[#063f32] px-6 py-3.5 font-medium text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
+          >
+            Se bud og beskeder
+          </Link>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={handleBuyNow}
+            disabled={
+              buyingNow ||
+              Boolean(listing.reserved_by) ||
+              Boolean(
+                listing.status &&
+                  listing.status.toLowerCase() !== "active"
+              )
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {buyingNow ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <ShoppingCart className="h-5 w-5" />
+            )}
 
-      {buyError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {buyError}
-        </div>
+            {buyingNow
+              ? "Lægger i kurven..."
+              : listing.reserved_by ||
+                  (listing.status &&
+                    listing.status.toLowerCase() !== "active")
+                ? "Varen er reserveret"
+                : "Køb nu"}
+          </button>
+
+          {buyError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {buyError}
+            </div>
+          )}
+
+          {listing.seller_id && (
+            <ContactSellerButton
+              listingId={listing.id}
+              sellerId={listing.seller_id}
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setOfferError("");
+              setOfferAmount("");
+              setOfferMessage("");
+              setOfferModalOpen(true);
+            }}
+            className="w-full rounded-full border border-[#d4af37] px-6 py-3.5 font-medium text-[#063f32] transition hover:bg-[#f4ead0]"
+          >
+            Send bud
+          </button>
+        </>
       )}
-
-      {listing.seller_id && (
-        <ContactSellerButton
-          listingId={listing.id}
-          sellerId={listing.seller_id}
-        />
-      )}
-
-      <button
-        type="button"
-        onClick={() => {
-          setOfferError("");
-          setOfferAmount("");
-          setOfferMessage("");
-          setOfferModalOpen(true);
-        }}
-        className="w-full rounded-full border border-[#d4af37] px-6 py-3.5 font-medium text-[#063f32] transition hover:bg-[#f4ead0]"
-      >
-        Send bud
-      </button>
     </div>
 
+    {!isOwnListing && (
+      <>
     {/* SÆLGERKORT */}
     <div className="mt-6 rounded-[22px] border border-[#eadfcb] bg-white p-5 shadow-sm">
       <p className="text-[11px] uppercase tracking-[0.25em] text-[#b79a3d]">
@@ -1077,6 +1166,8 @@ export default function ListingPage({
         og aftal fragt direkte i Equishopper.
       </p>
     </div>
+      </>
+    )}
   </div>
 </aside>
 </div>
@@ -1105,6 +1196,45 @@ export default function ListingPage({
       toggleFavorite={() => {}}
     />
   </section>
+)}
+
+
+{isAdmin && !galleryOpen && (
+  <div className="fixed inset-x-0 bottom-4 z-[90] px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:px-0">
+    <div className="mx-auto w-full max-w-md sm:w-auto">
+      {weLoveError && (
+        <div className="mb-2 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm text-red-700 shadow-lg">
+          {weLoveError}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void toggleWeLove()}
+        disabled={savingWeLove}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold shadow-[0_14px_40px_rgba(0,0,0,0.18)] transition disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
+          listing.is_we_love
+            ? "border border-[#d4af37] bg-white text-[#063f32] hover:bg-[#fffaf0]"
+            : "bg-[#063f32] text-white hover:bg-[#052f26]"
+        }`}
+        aria-pressed={Boolean(listing.is_we_love)}
+      >
+        {savingWeLove ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : listing.is_we_love ? (
+          <HeartIconSolid className="h-5 w-5 text-[#d4af37]" />
+        ) : (
+          <HeartIconOutline className="h-5 w-5 text-[#d4af37]" />
+        )}
+
+        {savingWeLove
+          ? "Gemmer..."
+          : listing.is_we_love
+            ? "We Love · fjern"
+            : "Tilføj til We Love"}
+      </button>
+    </div>
+  </div>
 )}
 
 

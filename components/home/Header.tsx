@@ -10,6 +10,7 @@ import {
   Menu,
   MessageCircle,
   Package,
+  ShoppingBag,
   UserRound,
   X,
 } from "lucide-react";
@@ -33,6 +34,7 @@ export default function Header() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -103,6 +105,68 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      setCartCount(0);
+      return;
+    }
+
+    const userId = user.id;
+    let cancelled = false;
+
+    async function loadCartCount() {
+      const { count, error } = await supabase
+        .from("cart_items")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Kunne ikke hente antal varer i kurven:", error);
+        return;
+      }
+
+      setCartCount(count ?? 0);
+    }
+
+    void loadCartCount();
+
+    const channel = supabase
+      .channel(`header-cart:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cart_items",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void loadCartCount();
+        },
+      )
+      .subscribe();
+
+    function handleCartChanged() {
+      void loadCartCount();
+    }
+
+    window.addEventListener(
+      "equishopper-cart-changed",
+      handleCartChanged,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "equishopper-cart-changed",
+        handleCartChanged,
+      );
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
         profileMenuRef.current &&
@@ -139,6 +203,7 @@ export default function Header() {
     setUser(null);
     setFullName("");
     setAvatarUrl(null);
+    setCartCount(0);
 
     router.push("/login");
     router.refresh();
@@ -204,6 +269,26 @@ export default function Header() {
           </Link>
 
           {!authLoading && user && (
+            <Link
+              href="/kurv"
+              aria-label={
+                cartCount > 0
+                  ? `Kurv, ${cartCount} vare${cartCount === 1 ? "" : "r"}`
+                  : "Kurv"
+              }
+              className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#d4af37] text-[#d4af37] transition hover:bg-[#d4af37]/10"
+            >
+              <ShoppingBag className="h-5 w-5" />
+
+              {cartCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#063f32]">
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </Link>
+          )}
+
+          {!authLoading && user && (
             <NotificationBell user={user} />
           )}
 
@@ -265,6 +350,17 @@ export default function Header() {
                       icon={
                         <HeartIcon className="h-[19px] w-[19px]" />
                       }
+                      onClick={() => setProfileMenuOpen(false)}
+                    />
+
+                    <ProfileMenuLink
+                      href="/kurv"
+                      label={
+                        cartCount > 0
+                          ? `Kurv (${cartCount})`
+                          : "Kurv"
+                      }
+                      icon={<ShoppingBag size={19} />}
                       onClick={() => setProfileMenuOpen(false)}
                     />
 
@@ -383,8 +479,11 @@ export default function Header() {
             <>
               <Link href="/profil">Min profil</Link>
               <Link href="/mine-annoncer">Mine annoncer</Link>
+              <Link href="/kurv">
+                Kurv{cartCount > 0 ? ` (${cartCount})` : ""}
+              </Link>
               <Link href="/notifikationer">Notifikationer</Link>
-              <Link href="/ch">Beskeder</Link>
+              <Link href="/beskeder">Beskeder</Link>
 
               <button
                 type="button"

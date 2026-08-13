@@ -18,6 +18,8 @@ import { supabase } from "@/lib/supabase";
 type CartRow = {
   id: string;
   created_at: string;
+  agreed_price: number | string | null;
+  offer_id: string | null;
   listing: {
     id: string;
     title: string;
@@ -62,6 +64,20 @@ const BUYER_PROTECTION_FIXED_FEE = 5;
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function getEffectivePrice(item: CartRow) {
+  const agreedPrice = Number(item.agreed_price);
+
+  if (
+    item.offer_id &&
+    Number.isFinite(agreedPrice) &&
+    agreedPrice > 0
+  ) {
+    return agreedPrice;
+  }
+
+  return Number(item.listing?.price ?? 0);
 }
 
 export default function CartPage() {
@@ -111,6 +127,8 @@ export default function CartPage() {
         .select(`
           id,
           created_at,
+          agreed_price,
+          offer_id,
           listing:listings (
             id,
             title,
@@ -197,7 +215,7 @@ export default function CartPage() {
   const subtotal = useMemo(
     () =>
       items.reduce(
-        (sum, item) => sum + Number(item.listing?.price ?? 0),
+        (sum, item) => sum + getEffectivePrice(item),
         0,
       ),
     [items],
@@ -530,12 +548,34 @@ export default function CartPage() {
                             </p>
                           )}
 
-                          <p className="mt-3 font-semibold text-stone-900">
-                            {Number(
-                              listing.price,
-                            ).toLocaleString("da-DK")}{" "}
-                            kr.
-                          </p>
+                          <div className="mt-3">
+                            {item.offer_id &&
+                            Number(item.agreed_price) > 0 ? (
+                              <>
+                                <p className="font-semibold text-stone-900">
+                                  {getEffectivePrice(item).toLocaleString("da-DK")}{" "}
+                                  kr.
+                                </p>
+
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="rounded-full bg-[#edf5f0] px-2.5 py-1 font-medium text-[#063f32]">
+                                    Accepteret bud
+                                  </span>
+
+                                  {Number(listing.price) !== getEffectivePrice(item) && (
+                                    <span className="text-stone-400 line-through">
+                                      {Number(listing.price).toLocaleString("da-DK")} kr.
+                                    </span>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <p className="font-semibold text-stone-900">
+                                {Number(listing.price).toLocaleString("da-DK")}{" "}
+                                kr.
+                              </p>
+                            )}
+                          </div>
                         </div>
 
                         <button

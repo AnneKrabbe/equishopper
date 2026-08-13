@@ -468,16 +468,27 @@ export default function ConversationPage() {
       setOfferActionLoading(offer.id);
       setErrorMessage("");
 
-      const { error: updateError } = await supabase
-        .from("offers")
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", offer.id)
-        .eq("status", "pending");
+      if (newStatus === "accepted") {
+        const { error: acceptError } = await supabase.rpc(
+          "accept_offer_and_add_to_cart",
+          {
+            p_offer_id: offer.id,
+          }
+        );
 
-      if (updateError) throw updateError;
+        if (acceptError) throw acceptError;
+      } else {
+        const { error: updateError } = await supabase
+          .from("offers")
+          .update({
+            status: newStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", offer.id)
+          .eq("status", "pending");
+
+        if (updateError) throw updateError;
+      }
 
       const body =
         newStatus === "accepted"

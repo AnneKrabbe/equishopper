@@ -111,6 +111,7 @@ export default function SellPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stripeReady, setStripeReady] = useState(false);
   const [stripeLoading, setStripeLoading] = useState(true);
+  const [stripeOnboardingLoading, setStripeOnboardingLoading] = useState(false);
 
   const [sizeOptions, setSizeOptions] = useState<string[]>([]);
   const [brandOptions, setBrandOptions] = useState<string[]>([]);
@@ -197,6 +198,57 @@ export default function SellPage() {
       mounted = false;
     };
   }, []);
+
+  async function startStripeOnboarding() {
+    try {
+      setStripeOnboardingLoading(true);
+      setMessage("");
+
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        window.location.href = "/login?redirect=/sell";
+        return;
+      }
+
+      const response = await fetch(
+        "/api/stripe/connect/onboard",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        },
+      );
+
+      const result = (await response.json()) as {
+        url?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !result.url) {
+        throw new Error(
+          result.error ??
+            "Stripe-onboarding kunne ikke startes.",
+        );
+      }
+
+      window.location.href = result.url;
+    } catch (error) {
+      console.error("Stripe-onboarding kunne ikke startes:", error);
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Stripe-onboarding kunne ikke startes.",
+      );
+
+      setStripeOnboardingLoading(false);
+    }
+  }
 
   useEffect(() => {
     async function fetchBrands() {
@@ -857,12 +909,16 @@ const { data: listing, error } = await supabase
                 bliver solgt.
               </p>
 
-              <a
-                href="/profil"
-                className="mt-4 inline-flex rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a]"
+              <button
+                type="button"
+                onClick={() => void startStripeOnboarding()}
+                disabled={stripeOnboardingLoading}
+                className="mt-4 inline-flex items-center justify-center rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Gå til Stripe-onboarding
-              </a>
+                {stripeOnboardingLoading
+                  ? "Åbner Stripe..."
+                  : "Gå til Stripe-onboarding"}
+              </button>
             </div>
           ) : (
             <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
