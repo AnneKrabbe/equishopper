@@ -44,9 +44,19 @@ export default function NotificationDropdown({
   ).length;
 
   return (
-    <div className="absolute right-0 top-full z-[10050] mt-3 w-[min(94vw,420px)] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
-      <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
-        <div>
+    <div
+      className="
+        fixed left-4 right-4 top-24 z-[10050]
+        flex max-h-[calc(100dvh-7rem)] flex-col
+        overflow-hidden rounded-2xl
+        border border-stone-200 bg-white shadow-2xl
+
+        md:absolute md:left-auto md:right-0 md:top-full
+        md:mt-3 md:w-[420px] md:max-h-[min(620px,calc(100vh-8rem))]
+      "
+    >
+      <div className="flex flex-none items-start justify-between gap-4 border-b border-stone-200 px-4 py-4 sm:px-5">
+        <div className="min-w-0">
           <h2 className="font-serif text-xl font-bold text-[#063f32]">
             Notifikationer
           </h2>
@@ -63,14 +73,16 @@ export default function NotificationDropdown({
             type="button"
             onClick={onMarkAllRead}
             disabled={markingAllRead}
-            className="text-xs font-semibold text-[#0b5a47] transition hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-none pt-1 text-right text-xs font-semibold text-[#0b5a47] transition hover:underline disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {markingAllRead ? "Gemmer..." : "Markér alle som læst"}
+            {markingAllRead
+              ? "Gemmer..."
+              : "Markér alle som læst"}
           </button>
         )}
       </div>
 
-      <div className="max-h-[520px] overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="px-5 py-10 text-center text-sm text-stone-500">
             Henter notifikationer...
@@ -78,6 +90,7 @@ export default function NotificationDropdown({
         ) : notifications.length === 0 ? (
           <div className="px-5 py-10 text-center">
             <CheckCircle2 className="mx-auto h-8 w-8 text-[#0b5a47]" />
+
             <p className="mt-3 font-medium text-[#063f32]">
               Ingen notifikationer endnu
             </p>
@@ -86,6 +99,7 @@ export default function NotificationDropdown({
           <div>
             {notifications.map((notification) => {
               const unread = !notification.read_at;
+
               const Icon = getNotificationIcon(
                 notification.notification_type,
               );
@@ -94,18 +108,20 @@ export default function NotificationDropdown({
                 <button
                   key={notification.id}
                   type="button"
-                  onClick={() => onNotificationClick(notification)}
+                  onClick={() =>
+                    onNotificationClick(notification)
+                  }
                   className={`relative flex w-full items-start gap-3 border-b border-stone-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-stone-50 ${
                     unread ? "bg-[#f3f8f5]" : "bg-white"
                   }`}
                 >
-                  <span className="mt-0.5 flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#edf4ef] text-[#0b5a47]">
+                  <span className="mt-0.5 flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#edf4ef] text-[#0b5a47] sm:h-11 sm:w-11">
                     <Icon className="h-5 w-5" />
                   </span>
 
-                  <span className="min-w-0 flex-1 pr-4">
+                  <span className="min-w-0 flex-1 pr-5">
                     <span
-                      className={`block text-sm leading-5 ${
+                      className={`block break-words text-sm leading-5 ${
                         unread
                           ? "font-semibold text-[#063f32]"
                           : "font-medium text-stone-800"
@@ -115,13 +131,15 @@ export default function NotificationDropdown({
                     </span>
 
                     {notification.message && (
-                      <span className="mt-1 block text-sm leading-5 text-stone-600">
+                      <span className="mt-1 block break-words text-sm leading-5 text-stone-600">
                         {notification.message}
                       </span>
                     )}
 
                     <span className="mt-1.5 block text-xs font-medium text-[#0b5a47]">
-                      {formatRelativeTime(notification.created_at)}
+                      {formatRelativeTime(
+                        notification.created_at,
+                      )}
                     </span>
                   </span>
 
@@ -135,7 +153,7 @@ export default function NotificationDropdown({
         )}
       </div>
 
-      <div className="border-t border-stone-200 bg-white p-3">
+      <div className="flex-none border-t border-stone-200 bg-white p-3">
         <Link
           href="/notifikationer"
           onClick={onClose}
@@ -181,15 +199,21 @@ export function getNotificationIcon(type: string) {
 export function formatRelativeTime(value: string) {
   const date = new Date(value);
   const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(0, Math.floor(diffMs / 60_000));
+
+  const diffMinutes = Math.max(
+    0,
+    Math.floor(diffMs / 60_000),
+  );
 
   if (diffMinutes < 1) return "Lige nu";
   if (diffMinutes < 60) return `${diffMinutes} min.`;
 
   const diffHours = Math.floor(diffMinutes / 60);
+
   if (diffHours < 24) return `${diffHours} t.`;
 
   const diffDays = Math.floor(diffHours / 24);
+
   if (diffDays === 1) return "I går";
   if (diffDays < 7) return `${diffDays} dage`;
 
