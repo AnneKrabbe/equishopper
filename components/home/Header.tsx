@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import { HeartIcon } from "@heroicons/react/24/solid";
 import {
   Bell,
+  Home,
   LogOut,
   Menu,
   MessageCircle,
+  Newspaper,
   Package,
   ShoppingBag,
+  Store,
   UserRound,
   X,
 } from "lucide-react";
@@ -260,14 +263,6 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <Link
-            href="/favorites"
-            aria-label="Favoritter"
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d4af37] transition hover:bg-[#d4af37]/10"
-          >
-            <HeartIcon className="h-6 w-6 text-[#d4af37]" />
-          </Link>
-
           {!authLoading && user && (
             <Link
               href="/kurv"
@@ -318,16 +313,22 @@ export default function Header() {
               </button>
 
               {profileMenuOpen && (
-                <div className="absolute right-0 top-full mt-3 w-72 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
-                  <div className="border-b border-stone-200 px-5 py-4">
-                    <p className="truncate font-semibold text-[#063f32]">
+                <div className="absolute right-0 top-full mt-3 w-72 overflow-hidden rounded-2xl border border-[#d4af37]/35 bg-[#063f32] shadow-2xl">
+                  <Link
+                    href="/profil"
+                    onClick={() => setProfileMenuOpen(false)}
+                    className="m-3 block rounded-2xl border border-[#d4af37]/40 bg-[#0b5948] px-5 py-4 transition hover:bg-[#106451]"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                      Vis profil
+                    </p>
+                    <p className="mt-1 truncate font-semibold text-white">
                       {fullName || "Din profil"}
                     </p>
-
-                    <p className="mt-1 truncate text-sm text-stone-500">
+                    <p className="mt-1 truncate text-sm text-[#d4af37]">
                       {user.email}
                     </p>
-                  </div>
+                  </Link>
 
                   <div className="p-2">
                     <ProfileMenuLink
@@ -379,11 +380,11 @@ export default function Header() {
                     />
                   </div>
 
-                  <div className="border-t border-stone-200 p-2">
+                  <div className="border-t border-white/15 p-2">
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-red-700 transition hover:bg-red-50"
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-red-300 transition hover:bg-white/10"
                     >
                       <LogOut size={19} />
                       Log ud
@@ -443,7 +444,7 @@ export default function Header() {
         {user && (
           <Link
             href="/profil"
-            className="mb-10 flex items-center gap-4 rounded-2xl border border-[#d4af37]/40 p-4"
+            className="mb-10 flex items-center gap-4 rounded-2xl border border-[#d4af37]/40 bg-[#0b5948] p-4 transition hover:bg-[#106451]"
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#d4af37] bg-[#d4af37] font-bold text-[#063f32]">
               {avatarUrl ? (
@@ -458,10 +459,12 @@ export default function Header() {
             </div>
 
             <div className="min-w-0">
-              <p className="truncate font-semibold text-white">
-                {fullName || "Min profil"}
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                Vis profil
               </p>
-
+              <p className="mt-1 truncate font-semibold text-white">
+                {fullName || "Din profil"}
+              </p>
               <p className="mt-1 truncate text-sm text-[#d4af37]">
                 {user.email}
               </p>
@@ -469,39 +472,57 @@ export default function Header() {
           </Link>
         )}
 
-        <nav className="flex flex-col gap-6 text-xl font-medium">
-          <Link href="/">Forside</Link>
-          <Link href="/annoncer">Annoncer</Link>
-          <Link href="/">Nyheder</Link>
-          <Link href="/favorites">Favoritter</Link>
+        <nav className="flex flex-col gap-3 text-lg font-medium text-white">
+          <MobileMenuLink href="/" label="Forside" icon={<Home size={22} />} />
+          <MobileMenuLink
+            href="/annoncer"
+            label="Annoncer"
+            icon={<Store size={22} />}
+          />
+          <MobileMenuLink href="/" label="Nyheder" icon={<Newspaper size={22} />} />
 
           {user ? (
             <>
-              <Link href="/profil">Min profil</Link>
-              <Link href="/mine-annoncer">Mine annoncer</Link>
-              <Link href="/kurv">
-                Kurv{cartCount > 0 ? ` (${cartCount})` : ""}
-              </Link>
-              <Link href="/notifikationer">Notifikationer</Link>
-              <Link href="/beskeder">Beskeder</Link>
+              <MobileMenuLink
+                href="/kurv"
+                label={cartCount > 0 ? `Kurv (${cartCount})` : "Kurv"}
+                icon={<ShoppingBag size={22} />}
+              />
+              <MobileMenuLink
+                href="/notifikationer"
+                label="Notifikationer"
+                icon={<Bell size={22} />}
+              />
+              <MobileMenuLink
+                href="/beskeder"
+                label="Beskeder"
+                icon={<MessageCircle size={22} />}
+              />
+
+              <div className="my-2 h-px bg-white/15" />
 
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-3 text-left text-red-300"
+                className="flex items-center gap-4 rounded-xl px-2 py-3 text-left text-red-300 transition hover:bg-white/10"
               >
                 <LogOut size={22} />
                 Log ud
               </button>
             </>
           ) : (
-            <Link href="/login">Log ind</Link>
+            <Link
+              href="/login"
+              className="rounded-xl px-2 py-3 text-white transition hover:bg-white/10 hover:text-[#d4af37]"
+            >
+              Log ind
+            </Link>
           )}
 
           {!authLoading && (
             <Link
               href={user ? "/sell" : "/register"}
-              className="mt-6 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base text-black"
+              className="mt-5 inline-flex w-fit rounded-full bg-[#d4af37] px-7 py-4 text-base font-medium text-[#063f32]"
             >
               {user ? "Ny annonce" : "Ny bruger"}
             </Link>
@@ -509,6 +530,26 @@ export default function Header() {
         </nav>
       </div>
     </header>
+  );
+}
+
+function MobileMenuLink({
+  href,
+  label,
+  icon,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-xl px-2 py-3 text-white transition hover:bg-white/10 hover:text-[#d4af37]"
+    >
+      <span className="text-[#d4af37]">{icon}</span>
+      <span>{label}</span>
+    </Link>
   );
 }
 
@@ -533,9 +574,9 @@ function ProfileMenuLink({
     <Link
       href={href}
       onClick={onClick}
-      className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-stone-700 transition hover:bg-stone-100 hover:text-[#063f32]"
+      className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 hover:text-[#d4af37]"
     >
-      <span className="text-[#0b5a47]">{icon}</span>
+      <span className="text-[#d4af37]">{icon}</span>
       {label}
     </Link>
   );

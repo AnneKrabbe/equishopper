@@ -140,10 +140,11 @@ function buildShippingSnapshot(
     return product;
   });
 
-  const shippingPriceAmount = products.reduce(
-    (sum, product) => sum + product.price_amount,
-    0,
-  );
+const shippingPriceAmount = products.reduce(
+  (sum, product) =>
+    sum + Math.ceil(product.price_amount / 100) * 100,
+  0,
+);
 
   if (products.length === 1) {
     const product = products[0];

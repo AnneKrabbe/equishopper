@@ -224,6 +224,48 @@ async function handleCheckoutPaid(
 
   const order = updatedOrder as PaidOrderRow;
 
+  /*
+   * En betalt vare skal forblive skjult fra markedspladsen.
+   * Vi fastlåser derfor annoncen som reserved til den konkrete køber.
+   */
+  const { data: paidItems, error: paidItemsError } =
+    await supabaseAdmin
+      .from("order_items")
+      .select("listing_id")
+      .eq("order_id", order.id);
+
+  if (paidItemsError) {
+    throw paidItemsError;
+  }
+
+  const paidListingIds = Array.from(
+    new Set(
+      (paidItems ?? [])
+        .map((item) => item.listing_id)
+        .filter(
+          (listingId): listingId is string =>
+            typeof listingId === "string" &&
+            listingId.length > 0,
+        ),
+    ),
+  );
+
+  if (paidListingIds.length > 0) {
+    const { error: listingUpdateError } =
+      await supabaseAdmin
+        .from("listings")
+       .update({
+  status: "sold",
+  reserved_by: null,
+  reserved_at: null,
+})
+        .in("id", paidListingIds);
+
+    if (listingUpdateError) {
+      throw listingUpdateError;
+    }
+  }
+
   try {
     await sendPaidOrderEmails(order);
   } catch (emailError) {

@@ -2073,7 +2073,7 @@ function formatShippingPrice(
     currency: currency.toUpperCase(),
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(Math.round(amount / 100));
+  }).format(Math.ceil(amount / 100));
 }
 
 function formatWeight(weightGrams: number) {

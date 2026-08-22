@@ -13,6 +13,7 @@ type ListingCardProps = {
     price: number;
     brand: string | null;
     size?: string | null;
+    status?: string | null;
     listing_images?: {
       image_url: string;
       sort_order: number;
@@ -23,7 +24,6 @@ type ListingCardProps = {
 export default function ListingCard({ listing }: ListingCardProps) {
   const router = useRouter();
 
-
   const [isFavorite, setIsFavorite] = useState(false);
   const [isLoadingFavorite, setIsLoadingFavorite] = useState(true);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
@@ -33,6 +33,8 @@ export default function ListingCard({ listing }: ListingCardProps) {
         (a, b) => a.sort_order - b.sort_order
       )[0]
     : null;
+
+  const isSold = listing.status?.toLowerCase() === "sold";
 
   useEffect(() => {
     async function loadFavoriteStatus() {
@@ -60,8 +62,8 @@ export default function ListingCard({ listing }: ListingCardProps) {
       setIsLoadingFavorite(false);
     }
 
-    loadFavoriteStatus();
-  }, [listing.id, supabase]);
+    void loadFavoriteStatus();
+  }, [listing.id]);
 
   async function toggleFavorite() {
     if (isUpdatingFavorite) return;
@@ -78,7 +80,6 @@ export default function ListingCard({ listing }: ListingCardProps) {
     const previousValue = isFavorite;
     const nextValue = !previousValue;
 
-    // Opdater hjertet med det samme
     setIsFavorite(nextValue);
     setIsUpdatingFavorite(true);
 
@@ -116,11 +117,19 @@ export default function ListingCard({ listing }: ListingCardProps) {
       >
         <div className="p-3 pb-0">
           <div className="relative aspect-[4/4.2] overflow-hidden rounded-[16px] bg-[#f1ece2]">
+            {isSold && (
+              <div className="absolute left-3 top-3 z-10 rounded-full bg-[#063f32] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d4af37] shadow-sm">
+                Solgt
+              </div>
+            )}
+
             {firstImage ? (
               <img
                 src={firstImage.image_url}
                 alt={listing.title}
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                className={`h-full w-full object-cover transition duration-500 group-hover:scale-[1.03] ${
+                  isSold ? "opacity-80" : ""
+                }`}
               />
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -168,7 +177,7 @@ export default function ListingCard({ listing }: ListingCardProps) {
             ? "Fjern annonce fra favoritter"
             : "Gem annonce som favorit"
         }
-        className="absolute right-5 top-5 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur-sm transition hover:scale-105 disabled:cursor-wait disabled:opacity-60"
+        className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur-sm transition hover:scale-105 disabled:cursor-wait disabled:opacity-60"
       >
         <Heart
           size={20}

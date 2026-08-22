@@ -23,7 +23,6 @@ type Listing = {
   }[];
 };
 
-
 export default function TrendingPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +50,7 @@ export default function TrendingPage() {
               sort_order
             )
           `)
+          .eq("status", "active")
           .order("trending_score", { ascending: false });
 
         if (error) throw error;

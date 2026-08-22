@@ -42,8 +42,9 @@ type OrderRow = {
   subtotal: number | string | null;
   shipping_price: number | string | null;
   buyer_protection_fee: number | string | null;
-  seller_fee: number | string | null;
-  seller_payout: number | string | null;
+  seller_fee_bps: number | string | null;
+  platform_fee_amount: number | string | null;
+  seller_payout_amount: number | string | null;
   total: number | string | null;
   currency: string | null;
   shipping_name: string | null;
@@ -165,8 +166,9 @@ export default function SalesPage() {
             subtotal,
             shipping_price,
             buyer_protection_fee,
-            seller_fee,
-            seller_payout,
+            seller_fee_bps,
+            platform_fee_amount,
+            seller_payout_amount,
             total,
             currency,
             shipping_name,
@@ -620,8 +622,8 @@ export default function SalesPage() {
                               </p>
 
                               <p className="mt-1 font-serif text-2xl text-[#063f32]">
-                                {formatMoney(
-                                  order.seller_payout,
+                                {formatMinorMoney(
+                                  order.seller_payout_amount,
                                 )}
                               </p>
 
@@ -875,15 +877,15 @@ function OrderDetails({ order }: { order: OrderView }) {
             />
 
             <DetailRow
-              label="Sælgergebyr"
-              value={`- ${formatMoney(order.seller_fee)}`}
+              label={`Sælgergebyr${formatFeeRate(order.seller_fee_bps)}`}
+              value={`- ${formatMinorMoney(order.platform_fee_amount)}`}
             />
 
             <div className="my-3 border-t border-[#eadfcb]" />
 
             <DetailRow
               label="Din udbetaling"
-              value={formatMoney(order.seller_payout)}
+              value={formatMinorMoney(order.seller_payout_amount)}
               strong
             />
           </div>
@@ -1132,12 +1134,52 @@ function formatMoney(
 ) {
   const amount = Number(value ?? 0);
 
+  if (!Number.isFinite(amount)) {
+    return new Intl.NumberFormat("da-DK", {
+      style: "currency",
+      currency: "DKK",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(0);
+  }
+
+  const hasDecimals = !Number.isInteger(amount);
+
   return new Intl.NumberFormat("da-DK", {
     style: "currency",
     currency: "DKK",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(amount));
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function formatMinorMoney(
+  value: number | string | null | undefined,
+) {
+  const amountInMinorUnits = Number(value ?? 0);
+
+  if (!Number.isFinite(amountInMinorUnits)) {
+    return formatMoney(0);
+  }
+
+  return formatMoney(amountInMinorUnits / 100);
+}
+
+function formatFeeRate(
+  value: number | string | null | undefined,
+) {
+  const bps = Number(value);
+
+  if (!Number.isFinite(bps)) {
+    return "";
+  }
+
+  const percent = bps / 100;
+
+  return ` (${percent.toLocaleString("da-DK", {
+    minimumFractionDigits: Number.isInteger(percent) ? 0 : 1,
+    maximumFractionDigits: 2,
+  })} %)`;
 }
 
 function formatDate(value: string) {

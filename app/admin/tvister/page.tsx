@@ -405,28 +405,43 @@ export default function AdminDisputesPage() {
           <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="font-serif text-4xl font-bold text-white sm:text-5xl">
-                Tvister
+                Tvister & kampagner
               </h1>
 
               <p className="mt-4 max-w-2xl leading-7 text-white/65">
-                Se åbne sager, følg ventende dokumentation og åbn den
-                enkelte tvist til behandling.
+                Administrer tvister og kampagner
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void loadDisputes({ silent: true })}
-              disabled={refreshing}
-              className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-white/30 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white hover:text-[#063f32] disabled:cursor-not-allowed disabled:opacity-60 lg:self-auto"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${
-                  refreshing ? "animate-spin" : ""
-                }`}
-              />
-              Opdater
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+              <Link
+                href="/admin/tvister"
+                className="rounded-full bg-[#d4af37] px-4 py-2.5 text-sm font-semibold text-[#063f32]"
+              >
+                Tvister
+              </Link>
+
+              <Link
+                href="/admin/kampagner"
+                className="rounded-full border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Kampagner
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => void loadDisputes({ silent: true })}
+                disabled={refreshing}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white hover:text-[#063f32] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    refreshing ? "animate-spin" : ""
+                  }`}
+                />
+                Opdater
+              </button>
+            </div>
           </div>
         </div>
       </section>

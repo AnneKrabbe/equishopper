@@ -23,7 +23,6 @@ type Listing = {
   }[];
 };
 
-
 export default function WeLovePage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +51,7 @@ export default function WeLovePage() {
             )
           `)
           .eq("is_we_love", true)
+          .eq("status", "active")
           .order("created_at", { ascending: false });
 
         if (error) throw error;

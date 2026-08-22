@@ -23,7 +23,6 @@ type Listing = {
   }[];
 };
 
-
 export default function NewestPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +50,7 @@ export default function NewestPage() {
               sort_order
             )
           `)
+          .eq("status", "active")
           .order("created_at", { ascending: false });
 
         if (error) throw error;

@@ -167,6 +167,7 @@ export default function ListingPage({
             )
           `)
           .eq("main_category", currentListing.main_category)
+          .eq("status", "active")
           .neq("id", currentListing.id)
           .order("favorite_count", { ascending: false })
           .limit(12);
@@ -221,6 +222,7 @@ export default function ListingPage({
               )
             `)
             .eq("seller_id", currentListing.seller_id)
+            .eq("status", "active")
             .neq("id", currentListing.id)
             .order("created_at", { ascending: false })
             .limit(12),
@@ -344,6 +346,12 @@ export default function ListingPage({
 
   const isOwnListing =
     Boolean(currentUserId) && currentUserId === listing.seller_id;
+
+  const listingStatus = listing.status?.toLowerCase() ?? "active";
+  const isSold = listingStatus === "sold";
+  const isReserved =
+    listingStatus === "reserved" || Boolean(listing.reserved_by);
+  const isUnavailable = isSold || isReserved || listingStatus !== "active";
 
   const categoryHref = listing.main_category
     ? `/category/${createSlug(listing.main_category)}`
@@ -545,11 +553,15 @@ export default function ListingPage({
         throw new Error("Du kan ikke købe din egen annonce.");
       }
 
+      if (listing.status?.toLowerCase() === "sold") {
+        throw new Error("Varen er solgt.");
+      }
+
       if (
         listing.reserved_by ||
         (listing.status && listing.status.toLowerCase() !== "active")
       ) {
-        throw new Error("Varen er ikke længere tilgængelig.");
+        throw new Error("Varen er reserveret.");
       }
 
       const { error } = await supabase.from("cart_items").insert({
@@ -798,8 +810,16 @@ export default function ListingPage({
             {/* BILLEDGALLERI */}
             <section>
               <div className="relative overflow-hidden rounded-[28px] bg-[#f1ece2] shadow-[0_16px_40px_rgba(0,0,0,0.08)]">
+                {isSold && (
+                  <div className="absolute left-5 top-5 z-30 rounded-full bg-[#063f32] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37] shadow-sm">
+                    Solgt
+                  </div>
+                )}
+
                 {listing.is_we_love && (
-                  <div className="absolute left-5 top-5 z-20 rounded-full bg-[#d4af37] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#063f32]">
+                  <div className={`absolute z-20 rounded-full bg-[#d4af37] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#063f32] ${
+                    isSold ? "left-5 top-16" : "left-5 top-5"
+                  }`}>
                     We Love
                   </div>
                 )}
@@ -1006,59 +1026,65 @@ export default function ListingPage({
         </>
       ) : (
         <>
-          <button
-            type="button"
-            onClick={handleBuyNow}
-            disabled={
-              buyingNow ||
-              Boolean(listing.reserved_by) ||
-              Boolean(
-                listing.status &&
-                  listing.status.toLowerCase() !== "active"
-              )
-            }
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {buyingNow ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <ShoppingCart className="h-5 w-5" />
-            )}
-
-            {buyingNow
-              ? "Lægger i kurven..."
-              : listing.reserved_by ||
-                  (listing.status &&
-                    listing.status.toLowerCase() !== "active")
-                ? "Varen er reserveret"
-                : "Køb nu"}
-          </button>
-
-          {buyError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {buyError}
+          {isSold ? (
+            <div className="rounded-[22px] border border-[#063f32]/15 bg-[#edf5f0] px-5 py-5 text-center">
+              <div className="mx-auto inline-flex rounded-full bg-[#063f32] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                Solgt
+              </div>
+              <p className="mt-3 text-sm leading-6 text-stone-600">
+                Denne vare er solgt og kan ikke længere købes eller bydes på.
+              </p>
             </div>
-          )}
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                disabled={buyingNow || isUnavailable}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {buyingNow ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <ShoppingCart className="h-5 w-5" />
+                )}
 
-          {listing.seller_id && (
-            <ContactSellerButton
-              listingId={listing.id}
-              sellerId={listing.seller_id}
-            />
-          )}
+                {buyingNow
+                  ? "Lægger i kurven..."
+                  : isReserved
+                    ? "Varen er reserveret"
+                    : "Køb nu"}
+              </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setOfferError("");
-              setOfferAmount("");
-              setOfferMessage("");
-              setOfferModalOpen(true);
-            }}
-            className="w-full rounded-full border border-[#d4af37] px-6 py-3.5 font-medium text-[#063f32] transition hover:bg-[#f4ead0]"
-          >
-            Send bud
-          </button>
+              {buyError && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {buyError}
+                </div>
+              )}
+
+              {listing.seller_id && (
+                <ContactSellerButton
+                  listingId={listing.id}
+                  sellerId={listing.seller_id}
+                />
+              )}
+
+              {!isReserved && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfferError("");
+                    setOfferAmount("");
+                    setOfferMessage("");
+                    setOfferModalOpen(true);
+                  }}
+                  className="w-full rounded-full border border-[#d4af37] px-6 py-3.5 font-medium text-[#063f32] transition hover:bg-[#f4ead0]"
+                >
+                  Send bud
+                </button>
+              )}
+            </>
+          )}
         </>
       )}
     </div>
@@ -1132,7 +1158,8 @@ export default function ListingPage({
           <span className="text-stone-500">Aktive annoncer</span>
 
           <span className="text-right font-semibold text-[#063f32]">
-            {sellerListings.length + 1}
+            {sellerListings.length +
+              (listing.status?.toLowerCase() === "active" ? 1 : 0)}
           </span>
         </div>
       </div>

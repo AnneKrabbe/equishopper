@@ -229,23 +229,23 @@ export default function CartPage() {
       return 0;
     }
 
-    return roundCurrency(
-      items.reduce((sum, item) => {
-        const product = item.listing?.shipping_product;
+    const shippingOere = items.reduce((sum, item) => {
+      const product = item.listing?.shipping_product;
 
-        if (
-          !item.listing?.shipping_available ||
-          !product ||
-          !product.active ||
-          !product.outbound_enabled ||
-          product.carrier.toLowerCase() !== "dao"
-        ) {
-          return sum;
-        }
+      if (
+        !item.listing?.shipping_available ||
+        !product ||
+        !product.active ||
+        !product.outbound_enabled ||
+        product.carrier.toLowerCase() !== "dao"
+      ) {
+        return sum;
+      }
 
-        return sum + product.price_amount / 100;
-      }, 0),
-    );
+      return sum + Math.ceil(product.price_amount / 100) * 100;
+    }, 0);
+
+    return shippingOere / 100;
   }, [items, shippingMethod]);
 
   const buyerProtectionFee =
@@ -538,7 +538,9 @@ export default function CartPage() {
                                 )}{" "}
                                 ·{" "}
                                 {formatMoney(
-                                  listing.shipping_product.price_amount / 100,
+                                  Math.ceil(
+                                    listing.shipping_product.price_amount / 100,
+                                  ),
                                 )}
                               </p>
                             </div>

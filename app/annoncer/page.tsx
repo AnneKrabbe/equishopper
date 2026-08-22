@@ -74,22 +74,23 @@ export default async function ListingsPage({
       ? parsedMaxPrice
       : null;
 
-  let query = supabase
-    .from("listings")
-    .select(`
-      id,
-      title,
-      price,
-      brand,
-      main_category,
-      subcategory,
-      size,
-      trending_score,
-      listing_images (
-        image_url,
-        sort_order
-      )
-    `);
+let query = supabase
+  .from("listings")
+  .select(`
+    id,
+    title,
+    price,
+    brand,
+    main_category,
+    subcategory,
+    size,
+    trending_score,
+    listing_images (
+      image_url,
+      sort_order
+    )
+  `)
+  .eq("status", "active");
 
   if (searchQuery) {
     const searchValue = escapeSearchValue(searchQuery);

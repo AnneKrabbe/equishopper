@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
@@ -47,6 +46,7 @@ export default function HomeClient() {
             sort_order
           )
         `)
+        .eq("status", "active")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -81,8 +81,8 @@ export default function HomeClient() {
       }
     }
 
-    fetchListings();
-    fetchFavorites();
+    void fetchListings();
+    void fetchFavorites();
   }, []);
 
   const latestListings = listings;
@@ -185,7 +185,6 @@ export default function HomeClient() {
           />
         </div>
       </section>
-      
     </main>
   );
 }
