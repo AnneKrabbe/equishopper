@@ -37,7 +37,7 @@ export default function OmOsPage() {
             <p>
               Equishopper blev til, da jeg var på jagt efter en brugt sadel og
               endte i kontakt med en svindler. Heldigvis gennemskuede jeg det,
-              inden jeg mistede mine penge – men bagefter kunne jeg ikke helt
+              inden jeg mistede mine penge – men bagefter kunne jeg ikke
               slippe tanken:{" "}
               <strong className="font-semibold text-[#063f32]">
                 Hvorfor skal det være så usikkert at handle brugt rideudstyr?

@@ -493,7 +493,7 @@ export default function HandelsbetingelserPage() {
             </p>
 
             <p className="mt-6 text-sm text-white/50">
-              Senest opdateret: 7. august 2026
+              Senest opdateret: 23. august 2026
             </p>
           </div>
         </section>
@@ -521,12 +521,6 @@ export default function HandelsbetingelserPage() {
             </aside>
 
             <article className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.07)] sm:p-8 lg:p-10">
-              <div className="mb-10 rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-5 text-sm leading-6 text-stone-600">
-                Arbejdsudkast: Prisside, DAO&apos;s endelige
-                integrations- og erstatningsvilkår samt det endelige betalings-
-                og fragtflow skal kontrolleres før offentlig lancering. Få også
-                den endelige tekst juridisk gennemgået.
-              </div>
 
               <div className="space-y-12">
                 {sections.map((section) => (

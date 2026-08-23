@@ -11,6 +11,7 @@ const sections = [
           personoplysninger i overensstemmelse med gældende
           databeskyttelseslovgivning.
         </p>
+
         <p>
           Denne privatlivspolitik beskriver, hvilke oplysninger vi indsamler,
           hvorfor vi gør det, og hvilke rettigheder du har.
@@ -18,12 +19,14 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "dataansvarlig",
     title: "2. Dataansvarlig",
     content: (
       <>
         <p className="font-semibold text-[#063f32]">Equishopper</p>
+
         <p>
           Duevej 50, 3. th.
           <br />
@@ -31,8 +34,9 @@ const sections = [
           <br />
           Danmark
         </p>
+
         <p>
-          CVR: [indsættes, når registreringen er afsluttet]
+          CVR: 46667247
           <br />
           E-mail:{" "}
           <a
@@ -45,12 +49,14 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "oplysninger",
     title: "3. Hvilke oplysninger indsamler vi?",
     content: (
       <>
         <p>Når du bruger Equishopper, kan vi behandle følgende oplysninger:</p>
+
         <ul>
           <li>navn og brugernavn</li>
           <li>e-mailadresse og telefonnummer</li>
@@ -60,6 +66,7 @@ const sections = [
           <li>beskeder, anmeldelser og oplysninger om tvister</li>
           <li>tekniske oplysninger om din brug af platformen</li>
         </ul>
+
         <p>
           Vi opbevarer ikke dine betalingskortoplysninger. Betalinger behandles
           af Stripe eller en anden godkendt betalingsudbyder.
@@ -67,12 +74,14 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "formaal",
     title: "4. Hvad bruger vi oplysningerne til?",
     content: (
       <>
         <p>Vi bruger dine oplysninger for at:</p>
+
         <ul>
           <li>oprette og administrere din konto</li>
           <li>gennemføre køb og salg</li>
@@ -86,46 +95,105 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "deling",
     title: "5. Hvem deler vi oplysninger med?",
     content: (
       <>
-        <p>Vi deler kun oplysninger, når det er nødvendigt.</p>
-        <p>Det kan blandt andet være med:</p>
-        <ul>
-          <li>Stripe eller en anden betalingsudbyder</li>
-          <li>godkendte fragtpartnere</li>
-          <li>tekniske leverandører, som hjælper med at drive platformen</li>
-          <li>offentlige myndigheder, hvis loven kræver det</li>
-        </ul>
         <p>
-          Equishopper anvender blandt andet Supabase til sikker opbevaring af
-          brugerdata og Stripe til behandling af betalinger.
+          Vi deler kun personoplysninger med andre, når det er nødvendigt for
+          at levere Equishoppers tjenester, gennemføre en handel, overholde
+          vores retlige forpligtelser eller beskytte platformen mod misbrug.
         </p>
+
+        <p>
+          Vi anvender blandt andet følgende tekniske leverandører og
+          samarbejdspartnere:
+        </p>
+
+        <ul>
+          <li>
+            <strong>Supabase</strong> – database, brugerlogin,
+            autentifikation samt opbevaring af billeder og andre platformdata.
+          </li>
+
+          <li>
+            <strong>Stripe</strong> – behandling af betalinger,
+            betalingskonti, Stripe Connect og udbetalinger til sælgere.
+            Equishopper opbevarer ikke selv brugernes kortoplysninger.
+          </li>
+
+          <li>
+            <strong>Vercel</strong> – hosting, teknisk drift og levering af
+            Equishoppers hjemmeside og applikation.
+          </li>
+
+          <li>
+            <strong>Resend</strong> – udsendelse af transaktionsmails og andre
+            nødvendige e-mails fra Equishopper.
+          </li>
+
+          <li>
+            <strong>Shipmondo</strong> – teknisk behandling af
+            fragtinformation og oprettelse af forsendelser.
+          </li>
+
+          <li>
+            <strong>DAO</strong> – transportør ved forsendelser, herunder
+            behandling af nødvendige oplysninger om afsender, modtager,
+            levering og tracking.
+          </li>
+
+          <li>
+            <strong>Google</strong> – tjenester i forbindelse med
+            søgemaskineoptimering, produktvisninger og administration af
+            Equishoppers synlighed på Google, herunder Google Search Console
+            og Google Merchant Center.
+          </li>
+        </ul>
+
+        <p>
+          Afhængigt af den konkrete tjeneste kan leverandørerne behandle
+          oplysninger på vegne af Equishopper eller som selvstændigt
+          dataansvarlige. Vi deler kun de oplysninger, der er nødvendige for
+          det konkrete formål.
+        </p>
+
+        <p>
+          Vi kan også dele oplysninger med offentlige myndigheder eller andre
+          relevante parter, hvis vi er retligt forpligtet til det, eller hvis
+          det er nødvendigt for at forebygge svindel, håndtere tvister eller
+          beskytte Equishopper og vores brugere.
+        </p>
+
         <p>Vi sælger aldrig dine personoplysninger.</p>
       </>
     ),
   },
+
   {
     id: "opbevaring",
     title: "6. Opbevaring og sletning af oplysninger",
     content: (
       <>
         <p>
-          Vi opbevarer dine personoplysninger, så længe det er nødvendigt for at
-          drive din konto og gennemføre handler.
+          Vi opbevarer dine personoplysninger, så længe det er nødvendigt for
+          at drive din konto og gennemføre handler.
         </p>
+
         <p>
           Hvis du sletter din konto, slettes eller anonymiseres dine
           personoplysninger, medmindre Equishopper er forpligtet til at bevare
           bestemte oplysninger efter gældende lovgivning.
         </p>
+
         <p>
           Oplysninger kan eksempelvis blive bevaret af hensyn til bogføring,
           dokumentation, sikkerhed, igangværende tvister eller andre retlige
           forpligtelser.
         </p>
+
         <p>
           Oplysninger om gennemførte handler kan derfor blive opbevaret i den
           periode, som lovgivningen kræver.
@@ -133,12 +201,14 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "rettigheder",
     title: "7. Dine rettigheder",
     content: (
       <>
         <p>Du har blandt andet ret til at:</p>
+
         <ul>
           <li>få indsigt i dine personoplysninger</li>
           <li>få urigtige oplysninger rettet</li>
@@ -147,6 +217,7 @@ const sections = [
           <li>få begrænset behandlingen i visse tilfælde</li>
           <li>få udleveret dine oplysninger i et almindeligt anvendt format</li>
         </ul>
+
         <p>
           Du kan kontakte os på support@equishopper.dk, hvis du ønsker at gøre
           brug af dine rettigheder.
@@ -154,6 +225,7 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "sikkerhed",
     title: "8. Sikkerhed",
@@ -163,6 +235,7 @@ const sections = [
           Vi beskytter dine oplysninger med passende tekniske og organisatoriske
           sikkerhedsforanstaltninger.
         </p>
+
         <p>
           Kun personer og leverandører med et sagligt behov har adgang til
           personoplysninger.
@@ -170,12 +243,14 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "aendringer",
     title: "9. Ændringer",
     content: (
       <>
         <p>Vi kan opdatere denne privatlivspolitik.</p>
+
         <p>
           Den seneste version vil altid være tilgængelig på Equishoppers
           hjemmeside.
@@ -183,6 +258,7 @@ const sections = [
       </>
     ),
   },
+
   {
     id: "kontakt",
     title: "10. Kontakt",
@@ -192,6 +268,7 @@ const sections = [
           Hvis du har spørgsmål om vores behandling af personoplysninger, er du
           velkommen til at kontakte os på:
         </p>
+
         <p>
           <a
             href="mailto:support@equishopper.dk"
@@ -227,7 +304,7 @@ export default function PrivatlivspolitikPage() {
             </p>
 
             <p className="mt-6 text-sm text-white/50">
-              Senest opdateret: 2. august 2026
+              Senest opdateret: 23. august 2026
             </p>
           </div>
         </section>
@@ -250,7 +327,10 @@ export default function PrivatlivspolitikPage() {
                       <span className="font-semibold text-[#063f32]">
                         {index + 1}.
                       </span>
-                      <span>{section.title.replace(/^\d+\.\s*/, "")}</span>
+
+                      <span>
+                        {section.title.replace(/^\d+\.\s*/, "")}
+                      </span>
                     </a>
                   ))}
                 </nav>
@@ -258,12 +338,6 @@ export default function PrivatlivspolitikPage() {
             </aside>
 
             <article className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.07)] sm:p-8 lg:p-10">
-              <div className="mb-10 rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-5 text-sm leading-6 text-stone-600">
-                Arbejdsudkast: CVR-nummer og den endelige liste over tekniske
-                leverandører skal opdateres før offentlig lancering. Få også
-                den endelige tekst juridisk gennemgået.
-              </div>
-
               <div className="space-y-12">
                 {sections.map((section) => (
                   <section
