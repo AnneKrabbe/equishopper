@@ -221,7 +221,7 @@ const badgeSection = {
 };
 
 const badgeStyle = {
-  backgroundColor: "#dce9df",
+  backgroundColor: "#d4af37",
   border: "0",
   borderRadius: "999px",
   color: "#123d2a",
