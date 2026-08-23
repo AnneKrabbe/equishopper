@@ -2,10 +2,17 @@
  * Central shipping service for Equishopper.
  *
  * Current setup:
- * - DAO is the only planned shipping carrier.
- * - DAO API integration is not connected yet.
- * - No Bring integration is used.
+ * - DAO is the active shipping carrier.
+ * - Shipmondo is used as the technical shipping integration layer.
+ * - Equishopper keeps its own shipping prices in shipping_products.
+ * - Live shipment creation is enabled when Shipmondo credentials exist.
  */
+
+import { DaoProvider } from "./dao";
+import type {
+  ShipmentRequest,
+  TrackingResponse,
+} from "./types";
 
 export const DEFAULT_SHIPPING_CARRIER = "dao" as const;
 
@@ -53,7 +60,10 @@ export type TrackingResult = {
 };
 
 export function isLiveShippingApiEnabled() {
-  return false;
+  return Boolean(
+    process.env.SHIPMONDO_API_USERNAME &&
+      process.env.SHIPMONDO_API_KEY,
+  );
 }
 
 export function getDefaultShippingCarrier(): ShippingCarrier {
@@ -74,18 +84,61 @@ export function normalizeShippingCarrier(
   );
 }
 
+/**
+ * Equishopper bruger sine egne fragtpriser fra shipping_products.
+ *
+ * Derfor spørger vi ikke Shipmondo om en live pris her.
+ */
 export async function getShippingQuote(): Promise<ShippingQuote> {
   throw new Error(
-    "DAO's live fragt-API er endnu ikke koblet på. Brug den eksisterende fragtpris fra Equishopper.",
+    "Equishopper bruger fragtpriserne fra shipping_products. Live pristilbud fra Shipmondo bruges ikke.",
   );
 }
 
-export async function createShipment(): Promise<ShipmentResult> {
-  throw new Error(
-    "DAO's live forsendelses-API er endnu ikke koblet på.",
+/**
+ * Opretter en DAO-forsendelse via Shipmondo.
+ */
+export async function createShipment(
+  request: ShipmentRequest,
+): Promise<ShipmentResult> {
+  if (!isLiveShippingApiEnabled()) {
+    throw new Error(
+      "Shipmondo API er ikke konfigureret. Kontrollér SHIPMONDO_API_USERNAME og SHIPMONDO_API_KEY.",
+    );
+  }
+
+  const carrier = normalizeShippingCarrier(
+    request.provider,
   );
+
+  if (carrier !== "dao") {
+    throw new Error(
+      `Fragtfirmaet "${carrier}" understøttes ikke.`,
+    );
+  }
+
+  const provider = new DaoProvider();
+
+  const result =
+    await provider.createShipment(request);
+
+  return {
+    carrier: "dao",
+    shipmentId: result.shipmentId || null,
+    trackingNumber:
+      result.trackingNumber || null,
+    trackingUrl: result.trackingUrl || null,
+    labelUrl: result.labelUrl || null,
+  };
 }
 
+/**
+ * Henter tracking på en DAO-forsendelse via Shipmondo.
+ *
+ * Selve DAO-adapterens tracking-endpoint implementeres,
+ * når vi har den første rigtige shipment og kan verificere
+ * Shipmondos tracking-response.
+ */
 export async function getShipmentTracking(
   trackingNumber: string,
 ): Promise<TrackingResult> {
@@ -93,7 +146,34 @@ export async function getShipmentTracking(
     throw new Error("Trackingnummer mangler.");
   }
 
-  throw new Error(
-    "DAO's live tracking-API er endnu ikke koblet på.",
-  );
+  if (!isLiveShippingApiEnabled()) {
+    throw new Error(
+      "Shipmondo API er ikke konfigureret.",
+    );
+  }
+
+  const provider = new DaoProvider();
+
+  const result: TrackingResponse =
+    await provider.getTracking(
+      trackingNumber.trim(),
+    );
+
+  const latestEvent =
+    result.events.length > 0
+      ? result.events[
+          result.events.length - 1
+        ]
+      : null;
+
+  return {
+    carrier: "dao",
+    trackingNumber:
+      result.trackingNumber,
+    status: result.status ?? null,
+    description:
+      latestEvent?.description ?? null,
+    lastEventAt:
+      latestEvent?.timestamp ?? null,
+  };
 }

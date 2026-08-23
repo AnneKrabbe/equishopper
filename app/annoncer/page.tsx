@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { supabase } from "@/lib/supabase";
 import ListingCard from "@/components/listings/ListingCard";
 import FilterSidebar from "@/components/filters/FilterSidebar";
@@ -5,6 +6,22 @@ import MobileFilterBar from "@/components/filters/MobileFilterBar";
 import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
 import { Search } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Brugt rideudstyr – køb og sælg rideudstyr",
+  description:
+    "Find brugt rideudstyr på Equishopper. Køb og sælg brugte sadler, dækkener, trenser, ridetøj og udstyr til hest og rytter.",
+  alternates: {
+    canonical: "/annoncer",
+  },
+  openGraph: {
+    title: "Brugt rideudstyr | Equishopper",
+    description:
+      "Find brugte sadler, dækkener, trenser, ridetøj og andet rideudstyr på Equishopper.",
+    url: "/annoncer",
+    type: "website",
+  },
+};
 
 type Listing = {
   id: string;
@@ -173,8 +190,8 @@ let query = supabase
       <Header />
 
       <Hero
-        title="Annoncer"
-        description="Find udstyr til hest, rytter og stald."
+        title="Brugt rideudstyr"
+        description="Køb og sælg brugte sadler, dækkener, ridetøj og udstyr til hest og rytter."
         image="/images/Astralis.png"
         listingsCount={listingsCount}
         showSearch={false}
@@ -368,6 +385,26 @@ let query = supabase
             </div>
           </div>
         </div>
+      </section>
+
+
+      <section className="mx-auto mt-10 max-w-4xl px-4 pb-8 text-stone-600 sm:px-5 lg:px-8">
+        <h2 className="font-serif text-3xl text-[#063f32]">
+          Køb og sælg brugt rideudstyr
+        </h2>
+
+        <p className="mt-4 leading-7">
+          På Equishopper finder du brugt rideudstyr til både hest og
+          rytter. Gå på opdagelse i brugte sadler, dækkener, trenser,
+          ridetøj og andet udstyr fra private sælgere.
+        </p>
+
+        <p className="mt-3 leading-7">
+          Ved at købe rideudstyr brugt kan du finde kvalitetsudstyr til
+          en lavere pris og samtidig give udstyr, der allerede findes,
+          et nyt liv. Har du selv rideudstyr liggende, kan du nemt
+          oprette en annonce og sætte det til salg på Equishopper.
+        </p>
       </section>
 
       <MobileFilterBar
