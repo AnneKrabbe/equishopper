@@ -14,12 +14,20 @@ type MerchantListing = {
   main_category: string | null;
   subcategory: string | null;
   status: string | null;
+  shipping_available: boolean | null;
+  shipping_product_id: string | null;
+
   listing_images:
     | {
         image_url: string;
         sort_order: number;
       }[]
     | null;
+};
+
+type ShippingProductRow = {
+  id: string;
+  max_weight_grams: number;
 };
 
 function escapeXml(value: string) {
@@ -60,6 +68,18 @@ function makeProductType(listing: MerchantListing) {
     .join(" > ");
 }
 
+function formatShippingWeight(
+  maxWeightGrams: number | null | undefined,
+) {
+  if (!maxWeightGrams || maxWeightGrams <= 0) {
+    return null;
+  }
+
+  const kilos = maxWeightGrams / 1000;
+
+  return `${kilos} kg`;
+}
+
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from("listings")
@@ -75,6 +95,8 @@ export async function GET() {
       main_category,
       subcategory,
       status,
+      shipping_available,
+      shipping_product_id,
       listing_images (
         image_url,
         sort_order
@@ -102,6 +124,48 @@ export async function GET() {
   const listings =
     (data ?? []) as MerchantListing[];
 
+  const shippingProductIds = Array.from(
+    new Set(
+      listings
+        .map((listing) => listing.shipping_product_id)
+        .filter(
+          (id): id is string =>
+            Boolean(id),
+        ),
+    ),
+  );
+
+  const shippingProductMap =
+    new Map<string, ShippingProductRow>();
+
+  if (shippingProductIds.length > 0) {
+    const {
+      data: shippingProducts,
+      error: shippingProductsError,
+    } = await supabaseAdmin
+      .from("shipping_products")
+      .select(`
+        id,
+        max_weight_grams
+      `)
+      .in("id", shippingProductIds);
+
+    if (shippingProductsError) {
+      console.error(
+        "Kunne ikke hente fragtprodukter til Merchant-feed:",
+        shippingProductsError,
+      );
+    } else {
+      for (const product of
+        (shippingProducts ?? []) as ShippingProductRow[]) {
+        shippingProductMap.set(
+          product.id,
+          product,
+        );
+      }
+    }
+  }
+
   const items = listings
     .map((listing) => {
       const images = [
@@ -116,10 +180,38 @@ export async function GET() {
 
       /*
        * Google kræver et produktbillede.
-       * Annoncer uden billede kommer derfor ikke med
-       * i Merchant-feedet.
        */
       if (!image) {
+        return null;
+      }
+
+      /*
+       * Produkter uden Equishopper-fragt bør ikke sendes
+       * til Merchant Center med vægtbaseret shipping.
+       */
+      if (
+        !listing.shipping_available ||
+        !listing.shipping_product_id
+      ) {
+        return null;
+      }
+
+      const shippingProduct =
+        shippingProductMap.get(
+          listing.shipping_product_id,
+        );
+
+      const shippingWeight =
+        formatShippingWeight(
+          shippingProduct?.max_weight_grams,
+        );
+
+      /*
+       * Hvis vi ikke kan finde den tilknyttede vægtklasse,
+       * springer vi produktet over frem for at sende
+       * forkert shipping-data til Google.
+       */
+      if (!shippingWeight) {
         return null;
       }
 
@@ -189,6 +281,11 @@ export async function GET() {
         <g:price>${Number(
           listing.price,
         ).toFixed(2)} DKK</g:price>
+
+        <g:shipping_weight>${escapeXml(
+          shippingWeight,
+        )}</g:shipping_weight>
+
         ${optionalBrand}
         ${optionalSize}
         ${optionalColor}
@@ -217,10 +314,6 @@ export async function GET() {
       "Content-Type":
         "application/xml; charset=utf-8",
 
-      /*
-       * Google må gerne hente et frisk feed.
-       * Vercel må cache kortvarigt.
-       */
       "Cache-Control":
         "public, s-maxage=900, stale-while-revalidate=3600",
     },
