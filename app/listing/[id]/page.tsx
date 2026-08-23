@@ -24,7 +24,7 @@ type ListingPageProps = {
   params: Promise<{ id: string }>;
 };
 
-const SITE_URL = "https://equishopper.dk";
+const SITE_URL = "https://www.equishopper.dk";
 
 async function getListingForSeo(id: string): Promise<ListingSeoRow | null> {
   const { data, error } = await supabase

@@ -19,6 +19,6 @@ export default function robots(): MetadataRoute.Robots {
       ],
     },
 
-    sitemap: "https://equishopper.dk/sitemap.xml",
+    sitemap: "https://www.equishopper.dk/sitemap.xml",
   };
 }

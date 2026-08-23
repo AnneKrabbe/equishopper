@@ -95,7 +95,7 @@ CounterOfferEmail.PreviewProps = {
   counterOfferAmount: "8.000 kr.",
   counterOfferMessage:
     "Tak for dit bud. Jeg kan tilbyde sadlen til 8.000 kr., hvis du fortsat er interesseret.",
-  offerUrl: "https://equishopper.dk/offers/123",
+  offerUrl: "https://www.equishopper.dk/offers/123",
 } satisfies CounterOfferEmailProps;
 
 export default CounterOfferEmail;

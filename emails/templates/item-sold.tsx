@@ -65,7 +65,7 @@ ItemSoldEmail.PreviewProps = {
   listingImageUrl:
     "https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=1200&q=80",
   salePrice: "8.000 kr.",
-  orderUrl: "https://equishopper.dk/orders/123",
+  orderUrl: "https://www.equishopper.dk/orders/123",
 } satisfies ItemSoldEmailProps;
 
 export default ItemSoldEmail;

@@ -96,7 +96,7 @@ OrderConfirmationEmail.PreviewProps = {
   shippingPrice: "79 kr.",
   totalPrice: "8.079 kr.",
   orderNumber: "EQ-2026-00123",
-  orderUrl: "https://equishopper.dk/orders/123",
+  orderUrl: "https://www.equishopper.dk/orders/123",
 } satisfies OrderConfirmationEmailProps;
 
 export default OrderConfirmationEmail;

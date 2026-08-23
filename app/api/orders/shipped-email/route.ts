@@ -36,7 +36,7 @@ const siteUrl =
   (
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    "https://equishopper.dk"
+    "https://www.equishopper.dk"
   ).replace(/\/$/, "");
 
 export async function POST(request: NextRequest) {

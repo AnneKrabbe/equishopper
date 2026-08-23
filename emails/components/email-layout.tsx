@@ -26,13 +26,13 @@ type EmailLayoutProps = {
 
 const appUrl =
   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  "https://equishopper.dk";
+  "https://www.equishopper.dk";
 
 function getPublicLogoUrl() {
   const configuredLogoUrl = process.env.EMAIL_LOGO_URL?.trim();
 
   if (!configuredLogoUrl) {
-    return "https://equishopper.dk/images/equishopper-logo.png";
+    return "https://www.equishopper.dk/images/equishopper-logo.png";
   }
 
   if (

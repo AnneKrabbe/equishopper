@@ -64,7 +64,7 @@ OfferRejectedEmail.PreviewProps = {
     "https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=1200&q=80",
   listingPrice: "8.500 kr.",
   offerAmount: "7.500 kr.",
-  browseUrl: "https://equishopper.dk",
+  browseUrl: "https://www.equishopper.dk",
 } satisfies OfferRejectedEmailProps;
 
 export default OfferRejectedEmail;

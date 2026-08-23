@@ -74,7 +74,7 @@ Hvis ja, vil jeg meget gerne komme og se den i denne uge.
 
 Venlig hilsen
 Maria`,
-  conversationUrl: "https://equishopper.dk/messages/123",
+  conversationUrl: "https://www.equishopper.dk/messages/123",
 } satisfies NewMessageEmailProps;
 
 export default NewMessageEmail;

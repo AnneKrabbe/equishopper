@@ -99,8 +99,8 @@ ItemShippedEmail.PreviewProps = {
   totalPrice: "8.079 kr.",
   carrierName: "PostNord",
   trackingNumber: "00370730200012345678",
-  trackingUrl: "https://equishopper.dk/orders/123/tracking",
-  orderUrl: "https://equishopper.dk/orders/123",
+  trackingUrl: "https://www.equishopper.dk/orders/123/tracking",
+  orderUrl: "https://www.equishopper.dk/orders/123",
 } satisfies ItemShippedEmailProps;
 
 export default ItemShippedEmail;

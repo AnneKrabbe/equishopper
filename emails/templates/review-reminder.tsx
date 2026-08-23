@@ -67,7 +67,7 @@ ReviewReminderEmail.PreviewProps = {
   listingImageUrl:
     "https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=1200&q=80",
   transactionRole: "buyer",
-  reviewUrl: "https://equishopper.dk/orders/123/review",
+  reviewUrl: "https://www.equishopper.dk/orders/123/review",
 } satisfies ReviewReminderEmailProps;
 
 export default ReviewReminderEmail;

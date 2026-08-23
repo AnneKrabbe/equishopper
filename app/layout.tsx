@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://equishopper.dk"),
+  metadataBase: new URL("https://www.equishopper.dk"),
 
   title: {
     default: "Equishopper | Køb og sælg brugt rideudstyr",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "da_DK",
-    url: "https://equishopper.dk",
+    url: "https://www.equishopper.dk",
     siteName: "Equishopper",
     title: "Equishopper | Køb og sælg brugt rideudstyr",
     description:

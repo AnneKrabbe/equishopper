@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const SITE_URL = "https://equishopper.dk";
+const SITE_URL = "https://www.equishopper.dk";
 
 type ListingSitemapRow = {
   id: string;

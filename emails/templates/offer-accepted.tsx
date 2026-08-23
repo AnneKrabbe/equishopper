@@ -92,7 +92,7 @@ OfferAcceptedEmail.PreviewProps = {
   acceptedAmount: "7.500 kr.",
   sellerMessage:
     "Tak for dit bud. Jeg har accepteret det og glæder mig til at få handlen på plads.",
-  checkoutUrl: "https://equishopper.dk/checkout/123",
+  checkoutUrl: "https://www.equishopper.dk/checkout/123",
 } satisfies OfferAcceptedEmailProps;
 
 export default OfferAcceptedEmail;

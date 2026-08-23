@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-  "https://equishopper.dk";
+  "https://www.equishopper.dk";
 
 type PaidOrderRow = {
   id: string;

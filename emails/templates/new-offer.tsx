@@ -98,7 +98,7 @@ Jeg kan hente den allerede i weekenden, hvis du kan acceptere 7.500 kr.
 
 Venlig hilsen
 Maria`,
-  offerUrl: "https://equishopper.dk/offers/123",
+  offerUrl: "https://www.equishopper.dk/offers/123",
 } satisfies NewOfferEmailProps;
 
 export default NewOfferEmail;
