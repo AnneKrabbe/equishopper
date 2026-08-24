@@ -381,28 +381,65 @@ export default function SalesPage() {
       return;
     }
 
-    const form = shippingForms[order.id] ?? {
-      carrier: "",
-      trackingNumber: "",
-    };
-
     try {
       setSubmittingOrderId(order.id);
       setErrorMessage("");
       setSuccessMessage("");
 
+      let carrier: string | null = null;
+      let trackingNumber: string | null = null;
+
+      if (order.shipping_method === "shipping") {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+          throw new Error(
+            "Din session er udløbet. Log ind igen og prøv på ny.",
+          );
+        }
+
+        const shipmentResponse = await fetch(
+          `/api/orders/${encodeURIComponent(order.id)}/create-shipment`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          },
+        );
+
+        const shipmentResult = (await shipmentResponse
+          .json()
+          .catch(() => null)) as
+          | {
+              error?: string;
+              carrier?: string | null;
+              trackingNumber?: string | null;
+            }
+          | null;
+
+        if (!shipmentResponse.ok) {
+          throw new Error(
+            shipmentResult?.error ||
+              "DAO-forsendelsen kunne ikke oprettes.",
+          );
+        }
+
+        carrier =
+          shipmentResult?.carrier?.trim() || "dao";
+        trackingNumber =
+          shipmentResult?.trackingNumber?.trim() || null;
+      }
+
       const { error } = await supabase.rpc(
         "seller_mark_order_ready",
         {
           p_order_id: order.id,
-          p_shipping_carrier:
-            order.shipping_method === "shipping"
-              ? form.carrier.trim() || null
-              : null,
-          p_tracking_number:
-            order.shipping_method === "shipping"
-              ? form.trackingNumber.trim() || null
-              : null,
+          p_shipping_carrier: carrier,
+          p_tracking_number: trackingNumber,
         },
       );
 
@@ -416,7 +453,7 @@ export default function SalesPage() {
 
       setSuccessMessage(
         order.shipping_method === "shipping"
-          ? "Ordren er markeret som sendt."
+          ? "DAO-forsendelsen er oprettet, og ordren er markeret som sendt."
           : "Ordren er markeret som klar til afhentning.",
       );
 
