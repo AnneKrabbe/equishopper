@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -55,6 +55,10 @@ type OrderRow = {
   shipping_note: string | null;
   shipping_carrier: string | null;
   tracking_number: string | null;
+  shipping_shipment_id: string | null;
+  shipping_label_url: string | null;
+  shipping_tracking_url: string | null;
+  shipping_label_created_at: string | null;
   paid_at: string | null;
   shipped_at: string | null;
   ready_for_pickup_at: string | null;
@@ -91,10 +95,6 @@ type OrderView = OrderRow & {
   >;
 };
 
-type ShippingFormState = {
-  carrier: string;
-  trackingNumber: string;
-};
 
 const STATUS_ORDER: FulfillmentStatus[] = [
   "pending",
@@ -118,9 +118,9 @@ export default function SalesPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<
     string | null
   >(null);
-  const [shippingForms, setShippingForms] = useState<
-    Record<string, ShippingFormState>
-  >({});
+  const [generatingShipmentCodeOrderId, setGeneratingLabelOrderId] = useState<
+    string | null
+  >(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -179,6 +179,10 @@ export default function SalesPage() {
             shipping_note,
             shipping_carrier,
             tracking_number,
+            shipping_shipment_id,
+            shipping_label_url,
+            shipping_tracking_url,
+            shipping_label_created_at,
             paid_at,
             shipped_at,
             ready_for_pickup_at,
@@ -301,18 +305,6 @@ export default function SalesPage() {
 
       setOrders(orderViews);
 
-      setShippingForms((current) => {
-        const next = { ...current };
-
-        for (const order of orderViews) {
-          next[order.id] = next[order.id] ?? {
-            carrier: order.shipping_carrier ?? "",
-            trackingNumber: order.tracking_number ?? "",
-          };
-        }
-
-        return next;
-      });
     } catch (error) {
       console.error("Kunne ikke hente salg:", error);
       setErrorMessage(
@@ -371,13 +363,87 @@ export default function SalesPage() {
     }
   }
 
-  async function markOrderReady(
-    event: FormEvent<HTMLFormElement>,
-    order: OrderView,
-  ) {
-    event.preventDefault();
+  async function createShipmentCode(order: OrderView) {
+    if (generatingShipmentCodeOrderId || submittingOrderId) {
+      return;
+    }
 
-    if (submittingOrderId) {
+    try {
+      setGeneratingLabelOrderId(order.id);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error(
+          "Din session er udløbet. Log ind igen og prøv på ny.",
+        );
+      }
+
+      const response = await fetch(
+        `/api/orders/${encodeURIComponent(order.id)}/create-shipment`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        },
+      );
+
+      const result = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            alreadyCreated?: boolean;
+            shipmentId?: string | null;
+            trackingNumber?: string | null;
+            trackingUrl?: string | null;
+            labelUrl?: string | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error || "DAO-fragtkoden kunne ikke oprettes.",
+        );
+      }
+
+      setSuccessMessage(
+        result?.alreadyCreated
+          ? "DAO-fragtkoden var allerede oprettet."
+          : "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt.",
+      );
+
+      await loadOrders({ silent: true });
+    } catch (error) {
+      console.error("DAO-fragtkoden kunne ikke oprettes:", error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "DAO-fragtkoden kunne ikke oprettes.",
+      );
+    } finally {
+      setGeneratingLabelOrderId(null);
+    }
+  }
+
+  async function markOrderReady(order: OrderView) {
+    if (submittingOrderId || generatingShipmentCodeOrderId) {
+      return;
+    }
+
+    if (
+      order.shipping_method === "shipping" &&
+      !order.shipping_shipment_id?.trim() &&
+      !order.tracking_number?.trim()
+    ) {
+      setErrorMessage(
+        "Generér DAO-fragtkoden, før du markerer varen som sendt.",
+      );
       return;
     }
 
@@ -386,60 +452,18 @@ export default function SalesPage() {
       setErrorMessage("");
       setSuccessMessage("");
 
-      let carrier: string | null = null;
-      let trackingNumber: string | null = null;
-
-      if (order.shipping_method === "shipping") {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError || !session) {
-          throw new Error(
-            "Din session er udløbet. Log ind igen og prøv på ny.",
-          );
-        }
-
-        const shipmentResponse = await fetch(
-          `/api/orders/${encodeURIComponent(order.id)}/create-shipment`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          },
-        );
-
-        const shipmentResult = (await shipmentResponse
-          .json()
-          .catch(() => null)) as
-          | {
-              error?: string;
-              carrier?: string | null;
-              trackingNumber?: string | null;
-            }
-          | null;
-
-        if (!shipmentResponse.ok) {
-          throw new Error(
-            shipmentResult?.error ||
-              "DAO-forsendelsen kunne ikke oprettes.",
-          );
-        }
-
-        carrier =
-          shipmentResult?.carrier?.trim() || "dao";
-        trackingNumber =
-          shipmentResult?.trackingNumber?.trim() || null;
-      }
-
       const { error } = await supabase.rpc(
         "seller_mark_order_ready",
         {
           p_order_id: order.id,
-          p_shipping_carrier: carrier,
-          p_tracking_number: trackingNumber,
+          p_shipping_carrier:
+            order.shipping_method === "shipping"
+              ? order.shipping_carrier?.trim() || "dao"
+              : null,
+          p_tracking_number:
+            order.shipping_method === "shipping"
+              ? order.tracking_number?.trim() || null
+              : null,
         },
       );
 
@@ -453,7 +477,7 @@ export default function SalesPage() {
 
       setSuccessMessage(
         order.shipping_method === "shipping"
-          ? "DAO-forsendelsen er oprettet, og ordren er markeret som sendt."
+          ? "Ordren er markeret som sendt, og køberen er blevet orienteret."
           : "Ordren er markeret som klar til afhentning.",
       );
 
@@ -468,22 +492,6 @@ export default function SalesPage() {
     } finally {
       setSubmittingOrderId(null);
     }
-  }
-
-  function updateShippingForm(
-    orderId: string,
-    field: keyof ShippingFormState,
-    value: string,
-  ) {
-    setShippingForms((current) => ({
-      ...current,
-      [orderId]: {
-        carrier: current[orderId]?.carrier ?? "",
-        trackingNumber:
-          current[orderId]?.trackingNumber ?? "",
-        [field]: value,
-      },
-    }));
   }
 
   const groupedOrders = useMemo(() => {
@@ -617,10 +625,10 @@ export default function SalesPage() {
                       effectiveStatus ===
                         "awaiting_shipment" &&
                       order.payment_status === "paid";
-                    const form = shippingForms[order.id] ?? {
-                      carrier: "",
-                      trackingNumber: "",
-                    };
+                    const hasShipment = Boolean(
+                      order.shipping_shipment_id?.trim() ||
+                        order.tracking_number?.trim(),
+                    );
 
                     return (
                       <article
@@ -722,99 +730,135 @@ export default function SalesPage() {
                           />
 
                           {canMarkReady && (
-                            <form
-                              onSubmit={(event) =>
-                                void markOrderReady(
-                                  event,
-                                  order,
-                                )
-                              }
-                              className="mt-5 rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4"
-                            >
-                              {order.shipping_method ===
-                              "shipping" ? (
+                            <div className="mt-5 rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4">
+                              {order.shipping_method === "shipping" ? (
                                 <>
                                   <h3 className="font-semibold text-[#063f32]">
-                                    Forsendelsesoplysninger
+                                    DAO-fragt
                                   </h3>
 
-                                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                                    <Field
-                                      label="Fragtfirma"
-                                      value={form.carrier}
-                                      onChange={(value) =>
-                                        updateShippingForm(
-                                          order.id,
-                                          "carrier",
-                                          value,
-                                        )
-                                      }
-                                      placeholder="Fx PostNord"
-                                      disabled={
-                                        submittingOrderId ===
-                                        order.id
-                                      }
-                                    />
+                                  {!hasShipment ? (
+                                    <>
+                                      <p className="mt-2 text-sm leading-6 text-stone-600">
+                                        Generér først din DAO-fragtkode. Når koden er oprettet, skriver du den tydeligt på pakken med vandfast tusch. Aflever derefter pakken hos DAO og markér varen som sendt.
+                                      </p>
 
-                                    <Field
-                                      label="Trackingnummer"
-                                      value={
-                                        form.trackingNumber
-                                      }
-                                      onChange={(value) =>
-                                        updateShippingForm(
-                                          order.id,
-                                          "trackingNumber",
-                                          value,
-                                        )
-                                      }
-                                      placeholder="Valgfrit"
-                                      disabled={
-                                        submittingOrderId ===
-                                        order.id
-                                      }
-                                    />
-                                  </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void createShipmentCode(order)
+                                        }
+                                        disabled={
+                                          generatingShipmentCodeOrderId === order.id ||
+                                          submittingOrderId === order.id
+                                        }
+                                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                                      >
+                                        {generatingShipmentCodeOrderId === order.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Package className="h-4 w-4" />
+                                        )}
+
+                                        {generatingShipmentCodeOrderId === order.id
+                                          ? "Genererer DAO-fragtkode..."
+                                          : "Generér DAO-fragtkode"}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                        <div className="flex items-start gap-3">
+                                          <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-emerald-700" />
+
+                                          <div>
+                                            <p className="font-semibold text-emerald-900">
+                                              DAO-fragtkode oprettet
+                                            </p>
+
+                                            {order.tracking_number && (
+                                              <p className="mt-1 break-all text-sm text-emerald-800">
+                                                DAO-fragtkode:{" "}
+                                                {order.tracking_number}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                                        {order.shipping_label_url && (
+                                          <a
+                                            href={order.shipping_label_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center justify-center gap-2 rounded-full border border-[#063f32] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
+                                          >
+                                            <Package className="h-4 w-4" />
+                                            Åbn fragtlabel (alternativ)
+                                          </a>
+                                        )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void markOrderReady(order)
+                                          }
+                                          disabled={
+                                            submittingOrderId === order.id ||
+                                            generatingShipmentCodeOrderId === order.id
+                                          }
+                                          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          {submittingOrderId === order.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <Truck className="h-4 w-4" />
+                                          )}
+
+                                          {submittingOrderId === order.id
+                                            ? "Marker som sendt..."
+                                            : "Marker som sendt"}
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
                                 </>
                               ) : (
-                                <div>
+                                <>
                                   <h3 className="font-semibold text-[#063f32]">
                                     Afhentning
                                   </h3>
 
                                   <p className="mt-2 text-sm leading-6 text-stone-600">
-                                    Markér ordren som klar, når
-                                    køberen kan afhente varen.
+                                    Markér ordren som klar, når køberen kan
+                                    afhente varen.
                                   </p>
-                                </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void markOrderReady(order)
+                                    }
+                                    disabled={
+                                      submittingOrderId === order.id ||
+                                      generatingShipmentCodeOrderId === order.id
+                                    }
+                                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                                  >
+                                    {submittingOrderId === order.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <PackageCheck className="h-4 w-4" />
+                                    )}
+
+                                    {submittingOrderId === order.id
+                                      ? "Gemmer..."
+                                      : "Marker som klar til afhentning"}
+                                  </button>
+                                </>
                               )}
-
-                              <button
-                                type="submit"
-                                disabled={
-                                  submittingOrderId === order.id
-                                }
-                                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3.5 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                              >
-                                {submittingOrderId ===
-                                order.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : order.shipping_method ===
-                                  "shipping" ? (
-                                  <Truck className="h-4 w-4" />
-                                ) : (
-                                  <PackageCheck className="h-4 w-4" />
-                                )}
-
-                                {submittingOrderId ===
-                                order.id
-                                  ? "Gemmer..."
-                                  : order.shipping_method ===
-                                      "shipping"
-                                    ? "Marker som sendt"
-                                    : "Marker som klar til afhentning"}
-                              </button>
-                            </form>
+                            </div>
                           )}
 
                           <div className="mt-6">
@@ -929,7 +973,9 @@ function OrderDetails({ order }: { order: OrderView }) {
         </div>
       </div>
 
-      {(order.shipping_carrier || order.tracking_number) && (
+      {(order.shipping_carrier ||
+        order.tracking_number ||
+        order.shipping_label_url) && (
         <div className="mt-6 rounded-2xl border border-[#eadfcb] bg-white p-4">
           <div className="flex items-start gap-3">
             <Truck className="mt-0.5 h-5 w-5 flex-none text-[#0b5a47]" />
@@ -947,8 +993,19 @@ function OrderDetails({ order }: { order: OrderView }) {
 
               {order.tracking_number && (
                 <p className="mt-1 break-all text-sm text-stone-600">
-                  Trackingnummer: {order.tracking_number}
+                  DAO-fragtkode: {order.tracking_number}
                 </p>
+              )}
+
+              {order.shipping_label_url && (
+                <a
+                  href={order.shipping_label_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex rounded-full border border-[#063f32] px-4 py-2 text-sm font-semibold text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
+                >
+                  Åbn fragtlabel (alternativ)
+                </a>
               )}
             </div>
           </div>
@@ -983,7 +1040,9 @@ function StatusExplanation({
       text:
         order.shipping_method === "pickup"
           ? "Betalingen er modtaget. Gør varen klar og markér den som klar til afhentning."
-          : "Betalingen er modtaget. Send varen og markér ordren som sendt.",
+          : order.shipping_shipment_id || order.tracking_number
+            ? "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt."
+            : "Betalingen er modtaget. Generér DAO-fragtkoden, før du sender varen.",
       icon: Clock3,
     },
     ready_for_pickup: {
@@ -1068,38 +1127,6 @@ function StatusIcon({
     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#b79a3d] shadow-sm">
       <Icon className="h-5 w-5" />
     </div>
-  );
-}
-
-type FieldProps = {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-};
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  disabled = false,
-}: FieldProps) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-[#063f32]">
-        {label}
-      </span>
-
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 outline-none transition focus:border-[#d4af37] disabled:cursor-not-allowed disabled:bg-stone-50"
-      />
-    </label>
   );
 }
 

@@ -122,7 +122,7 @@ export async function POST(
         transferId: null,
         completedWithoutTransfer: true,
         message:
-          "Ordren var allerede afsluttet. Hele sælgerens udbetaling blev modregnet i tidligere reguleringer.",
+          "Ordren er afsluttet. Der var intet beløb til udbetaling til sælgeren.",
         order: preparedOrder,
       };
 

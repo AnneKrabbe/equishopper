@@ -54,6 +54,11 @@ type OrderRow = {
   shipping_note: string | null;
   shipping_carrier: string | null;
   tracking_number: string | null;
+  shipping_service_point_id: string | null;
+  shipping_service_point_name: string | null;
+  shipping_service_point_address: string | null;
+  shipping_service_point_postal_code: string | null;
+  shipping_service_point_city: string | null;
   paid_at: string | null;
   shipped_at: string | null;
   ready_for_pickup_at: string | null;
@@ -195,6 +200,11 @@ export default function MyOrdersPage() {
             shipping_note,
             shipping_carrier,
             tracking_number,
+            shipping_service_point_id,
+            shipping_service_point_name,
+            shipping_service_point_address,
+            shipping_service_point_postal_code,
+            shipping_service_point_city,
             paid_at,
             shipped_at,
             ready_for_pickup_at,
@@ -1235,6 +1245,41 @@ function OrderDetails({ order }: { order: OrderView }) {
                 {order.shipping_phone && (
                   <p>Telefon: {order.shipping_phone}</p>
                 )}
+
+                {(order.shipping_service_point_name ||
+                  order.shipping_service_point_address ||
+                  order.shipping_service_point_postal_code ||
+                  order.shipping_service_point_city) && (
+                  <div className="mt-4 rounded-2xl border border-[#eadfcb] bg-white p-4">
+                    <div className="flex items-start gap-3">
+                      <MapPin className="mt-0.5 h-5 w-5 flex-none text-[#0b5a47]" />
+
+                      <div>
+                        <p className="font-semibold text-[#063f32]">
+                          Valgt DAO-pakkeshop
+                        </p>
+
+                        {order.shipping_service_point_name && (
+                          <p className="mt-2 font-medium text-stone-800">
+                            {order.shipping_service_point_name}
+                          </p>
+                        )}
+
+                        {order.shipping_service_point_address && (
+                          <p>{order.shipping_service_point_address}</p>
+                        )}
+
+                        {(order.shipping_service_point_postal_code ||
+                          order.shipping_service_point_city) && (
+                          <p>
+                            {order.shipping_service_point_postal_code}{" "}
+                            {order.shipping_service_point_city}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -1296,7 +1341,10 @@ function OrderDetails({ order }: { order: OrderView }) {
 
               {order.tracking_number && (
                 <p className="mt-1 break-all text-sm text-stone-600">
-                  Trackingnummer: {order.tracking_number}
+                  {order.shipping_carrier?.toLowerCase() === "dao"
+                    ? "DAO-fragtkode"
+                    : "Trackingnummer"}
+                  : {order.tracking_number}
                 </p>
               )}
             </div>

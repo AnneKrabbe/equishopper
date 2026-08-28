@@ -12,6 +12,14 @@ type CheckoutBody = {
   city?: string;
   phone?: string;
   shippingNote?: string;
+
+  servicePoint?: {
+    id?: string;
+    name?: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
+  } | null;
 };
 
 type OrderRow = {
@@ -200,6 +208,39 @@ export async function POST(request: NextRequest) {
         { error: "Vælg en leveringsmetode." },
         { status: 400 }
       );
+    }
+
+    if (body.shippingMethod === "shipping") {
+      if (
+        !body.fullName?.trim() ||
+        !body.addressLine1?.trim() ||
+        !body.postalCode?.trim() ||
+        !body.city?.trim()
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Udfyld navn, adresse, postnummer og by.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (
+        !body.servicePoint?.id?.trim() ||
+        !body.servicePoint.name?.trim() ||
+        !body.servicePoint.address?.trim() ||
+        !body.servicePoint.postalCode?.trim() ||
+        !body.servicePoint.city?.trim()
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Vælg en DAO-pakkeshop, før du går til betaling.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const supabaseUser = createClient(
@@ -437,6 +478,31 @@ export async function POST(request: NextRequest) {
           shippingSnapshot.shippingDeliveryMethod,
         shipping_max_weight_grams:
           shippingSnapshot.shippingMaxWeightGrams,
+
+        shipping_service_point_id:
+          body.shippingMethod === "shipping"
+            ? body.servicePoint?.id?.trim() || null
+            : null,
+
+        shipping_service_point_name:
+          body.shippingMethod === "shipping"
+            ? body.servicePoint?.name?.trim() || null
+            : null,
+
+        shipping_service_point_address:
+          body.shippingMethod === "shipping"
+            ? body.servicePoint?.address?.trim() || null
+            : null,
+
+        shipping_service_point_postal_code:
+          body.shippingMethod === "shipping"
+            ? body.servicePoint?.postalCode?.trim() || null
+            : null,
+
+        shipping_service_point_city:
+          body.shippingMethod === "shipping"
+            ? body.servicePoint?.city?.trim() || null
+            : null,
       })
       .eq("id", order.id)
       .eq("payment_status", "unpaid");
@@ -659,6 +725,11 @@ export async function POST(request: NextRequest) {
 
           shipping_product_code:
             shippingSnapshot.shippingProductCode ?? "",
+
+          shipping_service_point_id:
+            body.shippingMethod === "shipping"
+              ? body.servicePoint?.id?.trim() || ""
+              : "",
         },
 
         payment_intent_data: {
@@ -681,6 +752,11 @@ export async function POST(request: NextRequest) {
               String(
                 shippingSnapshot.shippingPriceAmount,
               ),
+
+            shipping_service_point_id:
+              body.shippingMethod === "shipping"
+                ? body.servicePoint?.id?.trim() || ""
+                : "",
           },
 
           transfer_group:

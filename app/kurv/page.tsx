@@ -59,6 +59,23 @@ type CheckoutResponse = {
   error?: string;
 };
 
+type DaoServicePoint = {
+  id: string;
+  name: string;
+  address: string;
+  postalCode: string;
+  city: string;
+  distance: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  openingHours: string[];
+};
+
+type DaoServicePointsResponse = {
+  servicePoints?: DaoServicePoint[];
+  error?: string;
+};
+
 const BUYER_PROTECTION_PERCENTAGE = 0.03;
 const BUYER_PROTECTION_FIXED_FEE = 5;
 
@@ -99,9 +116,130 @@ export default function CartPage() {
   const [shippingNote, setShippingNote] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const [servicePoints, setServicePoints] = useState<DaoServicePoint[]>([]);
+  const [selectedServicePointId, setSelectedServicePointId] = useState("");
+  const [loadingServicePoints, setLoadingServicePoints] = useState(false);
+  const [servicePointError, setServicePointError] = useState("");
+
   useEffect(() => {
     void loadCart();
   }, []);
+
+  useEffect(() => {
+    if (shippingMethod !== "shipping") {
+      setServicePoints([]);
+      setSelectedServicePointId("");
+      setServicePointError("");
+      setLoadingServicePoints(false);
+      return;
+    }
+
+    const normalizedAddress = addressLine1.trim();
+    const normalizedPostalCode = postalCode.trim();
+    const normalizedCity = city.trim();
+
+    if (
+      !normalizedAddress ||
+      !/^\d{4}$/.test(normalizedPostalCode) ||
+      !normalizedCity
+    ) {
+      setServicePoints([]);
+      setSelectedServicePointId("");
+      setServicePointError("");
+      setLoadingServicePoints(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timer = window.setTimeout(() => {
+      void loadServicePoints(
+        normalizedAddress,
+        normalizedPostalCode,
+        normalizedCity,
+        controller.signal,
+      );
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    addressLine1,
+    postalCode,
+    city,
+    shippingMethod,
+  ]);
+
+  async function loadServicePoints(
+    address: string,
+    zipCode: string,
+    cityName: string,
+    signal?: AbortSignal,
+  ) {
+    try {
+      setLoadingServicePoints(true);
+      setServicePointError("");
+
+      const params = new URLSearchParams({
+        address,
+        zipCode,
+        city: cityName,
+      });
+
+      const response = await fetch(
+        `/api/shipping/dao/service-points?${params.toString()}`,
+        {
+          method: "GET",
+          signal,
+        },
+      );
+
+      const data = (await response.json()) as DaoServicePointsResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "DAO-pakkeshops kunne ikke hentes.",
+        );
+      }
+
+      const points = Array.isArray(data.servicePoints)
+        ? data.servicePoints
+        : [];
+
+      setServicePoints(points);
+
+      setSelectedServicePointId((current) =>
+        points.some((point) => point.id === current)
+          ? current
+          : "",
+      );
+
+      if (points.length === 0) {
+        setServicePointError(
+          "Der blev ikke fundet DAO-pakkeshops tæt på denne adresse.",
+        );
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      console.error("DAO-pakkeshops kunne ikke hentes:", error);
+      setServicePoints([]);
+      setSelectedServicePointId("");
+      setServicePointError(
+        error instanceof Error
+          ? error.message
+          : "DAO-pakkeshops kunne ikke hentes.",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoadingServicePoints(false);
+      }
+    }
+  }
 
   async function loadCart() {
     try {
@@ -274,6 +412,14 @@ export default function CartPage() {
     );
   });
 
+  const selectedServicePoint = useMemo(
+    () =>
+      servicePoints.find(
+        (point) => point.id === selectedServicePointId,
+      ) ?? null,
+    [servicePoints, selectedServicePointId],
+  );
+
   async function removeItem(cartItemId: string) {
     try {
       setRemovingId(cartItemId);
@@ -339,6 +485,16 @@ export default function CartPage() {
       return;
     }
 
+    if (
+      shippingMethod === "shipping" &&
+      !selectedServicePoint
+    ) {
+      setErrorMessage(
+        "Vælg en DAO-pakkeshop, før du fortsætter.",
+      );
+      return;
+    }
+
     if (!acceptedTerms) {
       setErrorMessage(
         "Du skal acceptere handelsbetingelserne, før du kan fortsætte.",
@@ -378,6 +534,15 @@ export default function CartPage() {
           city: city.trim(),
           phone: phone.trim(),
           shippingNote: shippingNote.trim(),
+          servicePoint: selectedServicePoint
+            ? {
+                id: selectedServicePoint.id,
+                name: selectedServicePoint.name,
+                address: selectedServicePoint.address,
+                postalCode: selectedServicePoint.postalCode,
+                city: selectedServicePoint.city,
+              }
+            : null,
         }),
       });
 
@@ -679,48 +844,138 @@ export default function CartPage() {
                 </div>
 
                 {shippingMethod === "shipping" && (
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                    <Field
-                      label="Fulde navn"
-                      value={fullName}
-                      onChange={setFullName}
-                      autoComplete="name"
-                      disabled={submitting}
-                    />
-
-                    <Field
-                      label="Telefon"
-                      value={phone}
-                      onChange={setPhone}
-                      autoComplete="tel"
-                      disabled={submitting}
-                    />
-
-                    <div className="sm:col-span-2">
+                  <div className="mt-6 space-y-6">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <Field
-                        label="Adresse"
-                        value={addressLine1}
-                        onChange={setAddressLine1}
-                        autoComplete="street-address"
+                        label="Fulde navn"
+                        value={fullName}
+                        onChange={setFullName}
+                        autoComplete="name"
+                        disabled={submitting}
+                      />
+
+                      <Field
+                        label="Telefon"
+                        value={phone}
+                        onChange={setPhone}
+                        autoComplete="tel"
+                        disabled={submitting}
+                      />
+
+                      <div className="sm:col-span-2">
+                        <Field
+                          label="Adresse"
+                          value={addressLine1}
+                          onChange={setAddressLine1}
+                          autoComplete="street-address"
+                          disabled={submitting}
+                        />
+                      </div>
+
+                      <Field
+                        label="Postnummer"
+                        value={postalCode}
+                        onChange={setPostalCode}
+                        autoComplete="postal-code"
+                        disabled={submitting}
+                      />
+
+                      <Field
+                        label="By"
+                        value={city}
+                        onChange={setCity}
+                        autoComplete="address-level2"
                         disabled={submitting}
                       />
                     </div>
 
-                    <Field
-                      label="Postnummer"
-                      value={postalCode}
-                      onChange={setPostalCode}
-                      autoComplete="postal-code"
-                      disabled={submitting}
-                    />
+                    <div className="rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-4 md:p-5">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="mt-0.5 h-5 w-5 flex-none text-[#b79a3d]" />
 
-                    <Field
-                      label="By"
-                      value={city}
-                      onChange={setCity}
-                      autoComplete="address-level2"
-                      disabled={submitting}
-                    />
+                        <div>
+                          <h3 className="font-semibold text-[#063f32]">
+                            Vælg DAO-pakkeshop
+                          </h3>
+                          <p className="mt-1 text-sm leading-6 text-stone-500">
+                            Vi viser de 5 nærmeste DAO-pakkeshops ud fra
+                            din adresse, dit postnummer og din by.
+                          </p>
+                        </div>
+                      </div>
+
+                      {!addressLine1.trim() ||
+                      !/^\d{4}$/.test(postalCode.trim()) ||
+                      !city.trim() ? (
+                        <p className="mt-4 rounded-xl bg-white px-4 py-3 text-sm text-stone-500">
+                          Udfyld adresse, 4-cifret postnummer og by for
+                          at se de 5 nærmeste DAO-pakkeshops.
+                        </p>
+                      ) : loadingServicePoints ? (
+                        <div className="mt-4 flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-stone-500">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Henter DAO-pakkeshops...
+                        </div>
+                      ) : servicePointError ? (
+                        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                          {servicePointError}
+                        </div>
+                      ) : (
+                        <div className="mt-4 grid gap-3">
+                          {servicePoints.map((point) => {
+                            const selected =
+                              point.id === selectedServicePointId;
+
+                            return (
+                              <label
+                                key={point.id}
+                                className={`cursor-pointer rounded-2xl border bg-white p-4 transition ${
+                                  selected
+                                    ? "border-[#d4af37] ring-1 ring-[#d4af37]"
+                                    : "border-stone-200 hover:border-[#d4af37]"
+                                } ${
+                                  submitting
+                                    ? "cursor-not-allowed opacity-60"
+                                    : ""
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <input
+                                    type="radio"
+                                    name="daoServicePoint"
+                                    value={point.id}
+                                    checked={selected}
+                                    disabled={submitting}
+                                    onChange={() => {
+                                      setSelectedServicePointId(point.id);
+                                      setErrorMessage("");
+                                    }}
+                                    className="mt-1"
+                                  />
+
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-[#063f32]">
+                                      {point.name}
+                                    </p>
+                                    <p className="mt-1 text-sm leading-5 text-stone-500">
+                                      {point.address}
+                                      {point.address ? ", " : ""}
+                                      {point.postalCode} {point.city}
+                                    </p>
+
+                                    {point.distance != null && (
+                                      <p className="mt-1 text-xs font-medium text-[#0b5a47]">
+                                        {formatDistance(point.distance)} væk
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -820,7 +1075,8 @@ export default function CartPage() {
                     submitting ||
                     !acceptedTerms ||
                     (shippingMethod === "shipping" &&
-                      hasShippingUnavailableItem)
+                      (hasShippingUnavailableItem ||
+                        !selectedServicePoint))
                   }
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-4 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -846,8 +1102,8 @@ export default function CartPage() {
 
                   <p>
                     DAO-fragten beregnes ud fra den pakkeklasse,
-                    sælger valgte på annoncen. Fragtdata og pris
-                    gemmes som et snapshot på ordren ved checkout.
+                    sælger valgte på annoncen. Din valgte pakkeshop,
+                    fragtdata og pris gemmes på ordren ved checkout.
                   </p>
                 </div>
               </section>
@@ -889,6 +1145,17 @@ function Field({
       />
     </label>
   );
+}
+
+function formatDistance(distanceMeters: number) {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)} m`;
+  }
+
+  return `${(distanceMeters / 1000).toLocaleString("da-DK", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} km`;
 }
 
 function formatMoney(value: number) {

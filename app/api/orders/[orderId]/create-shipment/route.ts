@@ -19,15 +19,30 @@ type OrderRow = {
   shipping_method: string | null;
   payment_status: string | null;
   fulfillment_status: string | null;
+
   shipping_name: string | null;
   shipping_address_line1: string | null;
   shipping_postal_code: string | null;
   shipping_city: string | null;
   shipping_phone: string | null;
+
+  shipping_service_point_id: string | null;
+  shipping_service_point_name: string | null;
+  shipping_service_point_address: string | null;
+  shipping_service_point_postal_code: string | null;
+  shipping_service_point_city: string | null;
+
   shipping_carrier: string | null;
   tracking_number: string | null;
+
   shipping_product_code: string | null;
+  shipping_package_group: string | null;
   shipping_max_weight_grams: number | null;
+
+  shipping_shipment_id: string | null;
+  shipping_label_url: string | null;
+  shipping_tracking_url: string | null;
+  shipping_label_created_at: string | null;
 };
 
 type ProfileRow = {
@@ -79,16 +94,30 @@ export async function POST(
           shipping_postal_code,
           shipping_city,
           shipping_phone,
+          shipping_service_point_id,
+          shipping_service_point_name,
+          shipping_service_point_address,
+          shipping_service_point_postal_code,
+          shipping_service_point_city,
           shipping_carrier,
           tracking_number,
           shipping_product_code,
-          shipping_max_weight_grams
+          shipping_package_group,
+          shipping_max_weight_grams,
+          shipping_shipment_id,
+          shipping_label_url,
+          shipping_tracking_url,
+          shipping_label_created_at
         `)
         .eq("id", orderId)
         .maybeSingle();
 
     if (orderError) {
-      console.error("Kunne ikke hente ordre til Shipmondo:", orderError);
+      console.error(
+        "Kunne ikke hente ordre til Shipmondo:",
+        orderError,
+      );
+
       throw new Error("Ordren kunne ikke hentes.");
     }
 
@@ -117,7 +146,10 @@ export async function POST(
 
     if (order.payment_status !== "paid") {
       return NextResponse.json(
-        { error: "Forsendelsen kan først oprettes, når ordren er betalt." },
+        {
+          error:
+            "Forsendelsen kan først oprettes, når ordren er betalt.",
+        },
         { status: 409 },
       );
     }
@@ -135,22 +167,40 @@ export async function POST(
       );
     }
 
-    if (order.tracking_number?.trim()) {
+    /*
+     * Idempotens:
+     * Har ordren allerede et Shipmondo-id eller trackingnummer,
+     * returnerer vi den eksisterende label i stedet for at booke igen.
+     */
+    if (
+      order.shipping_shipment_id?.trim() ||
+      order.tracking_number?.trim()
+    ) {
       return NextResponse.json({
         success: true,
         alreadyCreated: true,
         carrier: order.shipping_carrier?.trim() || "dao",
-        trackingNumber: order.tracking_number.trim(),
-        trackingUrl: null,
-        labelUrl: null,
+        shipmentId: order.shipping_shipment_id,
+        trackingNumber: order.tracking_number,
+        trackingUrl: order.shipping_tracking_url,
+        labelUrl: order.shipping_label_url,
       });
     }
 
-    if (order.shipping_product_code !== "DAO_STS") {
+    /*
+     * Equishoppers interne priskoder er fx DAO_SHOP_1KG.
+     * Shipmondos faktiske daoSHOP-produktkode er DAO_STS og
+     * vælges i DaoProvider. Derfor validerer vi package_group,
+     * ikke den interne product_code.
+     */
+    if (
+      order.shipping_carrier?.trim().toLowerCase() !== "dao" ||
+      order.shipping_package_group !== "dao_shop"
+    ) {
       return NextResponse.json(
         {
           error:
-            "Ordren har ikke det forventede DAO Shop2Shop-fragtprodukt.",
+            "Ordren har ikke et gyldigt DAO daoSHOP-fragtprodukt.",
         },
         { status: 409 },
       );
@@ -166,6 +216,16 @@ export async function POST(
     }
 
     validateReceiver(order);
+
+    if (!order.shipping_service_point_id?.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Ordren mangler den DAO-pakkeshop, som køberen valgte ved checkout.",
+        },
+        { status: 409 },
+      );
+    }
 
     const { data: sellerProfileData, error: sellerProfileError } =
       await supabaseAdmin
@@ -187,6 +247,7 @@ export async function POST(
         "Kunne ikke hente sælgerprofil til Shipmondo:",
         sellerProfileError,
       );
+
       throw new Error("Sælgerens profil kunne ikke hentes.");
     }
 
@@ -219,6 +280,7 @@ export async function POST(
 
     const sellerEmail =
       sellerAuthResult.data.user?.email?.trim() ?? "";
+
     const buyerEmail =
       buyerAuthResult.data.user?.email?.trim() ?? "";
 
@@ -246,6 +308,7 @@ export async function POST(
       orderId: order.id,
       reference: `Equishopper ${order.id}`,
       weight: Math.round(weightGrams),
+      parcelShopId: order.shipping_service_point_id.trim(),
 
       sender: {
         name: senderName,
@@ -270,16 +333,19 @@ export async function POST(
 
     const shipment = await createShipment(shipmentRequest);
 
-    const orderUpdate: {
-      shipping_carrier: string;
-      tracking_number?: string;
-    } = {
+    const orderUpdate = {
       shipping_carrier: "dao",
+      tracking_number:
+        shipment.trackingNumber?.trim() || null,
+      shipping_shipment_id:
+        shipment.shipmentId?.trim() || null,
+      shipping_label_url:
+        shipment.labelUrl?.trim() || null,
+      shipping_tracking_url:
+        shipment.trackingUrl?.trim() || null,
+      shipping_label_created_at:
+        new Date().toISOString(),
     };
-
-    if (shipment.trackingNumber?.trim()) {
-      orderUpdate.tracking_number = shipment.trackingNumber.trim();
-    }
 
     const { error: updateError } =
       await supabaseAdmin
@@ -304,6 +370,7 @@ export async function POST(
             "Forsendelsen blev oprettet hos Shipmondo, men kunne ikke gemmes på ordren. Opret ikke en ny forsendelse, før den eksisterende er kontrolleret i Shipmondo.",
           shipmentId: shipment.shipmentId,
           trackingNumber: shipment.trackingNumber,
+          trackingUrl: shipment.trackingUrl,
           labelUrl: shipment.labelUrl,
         },
         { status: 500 },
@@ -320,7 +387,10 @@ export async function POST(
       labelUrl: shipment.labelUrl,
     });
   } catch (error) {
-    console.error("DAO-forsendelsen kunne ikke oprettes:", error);
+    console.error(
+      "DAO-forsendelsen kunne ikke oprettes:",
+      error,
+    );
 
     return NextResponse.json(
       {
@@ -334,7 +404,9 @@ export async function POST(
   }
 }
 
-async function getAuthenticatedUser(request: NextRequest) {
+async function getAuthenticatedUser(
+  request: NextRequest,
+) {
   const authorization =
     request.headers.get("authorization") ?? "";
 
