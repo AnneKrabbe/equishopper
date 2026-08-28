@@ -5,13 +5,14 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Header from "@/components/home/Header";
-import { supabase } from "@/lib/supabase";
+import { setAuthPersistence, supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -28,6 +29,10 @@ export default function LoginPage() {
     try {
       setIsLoading(true);
       setMessage("");
+
+      // Bestem hvor Supabase-sessionen gemmes, før login oprettes.
+      // "Husk mig" = localStorage. Ellers = sessionStorage.
+      setAuthPersistence(rememberMe);
 
       const { error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
@@ -161,7 +166,19 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="inline-flex cursor-pointer items-center gap-3 text-sm text-stone-700">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(event) => setRememberMe(event.target.checked)}
+                      disabled={isLoading}
+                      className="h-4 w-4 rounded border-stone-300 accent-[#063f32] focus:ring-[#0b5a47] disabled:cursor-not-allowed"
+                    />
+
+                    <span>Husk mig på denne enhed</span>
+                  </label>
+
                   <Link
                     href="/forgot-password"
                     className="text-sm font-semibold text-[#063f32] underline decoration-[#d4af37] decoration-2 underline-offset-4 transition hover:text-[#0b5a47]"
@@ -200,23 +217,23 @@ export default function LoginPage() {
                   Opret bruger
                 </Link>
 
-<p className="mt-6 text-center text-sm leading-6 text-stone-500">
-  Ved oprettelse af en konto accepterer du Equishoppers{" "}
-  <Link
-    href="/handelsbetingelser"
-    className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 hover:text-[#0b5a47]"
-  >
-    handelsbetingelser
-  </Link>{" "}
-  og{" "}
-  <Link
-    href="/privatlivspolitik"
-    className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 hover:text-[#0b5a47]"
-  >
-    privatlivspolitik
-  </Link>.
-</p>
-
+                <p className="mt-6 text-center text-sm leading-6 text-stone-500">
+                  Ved oprettelse af en konto accepterer du Equishoppers{" "}
+                  <Link
+                    href="/handelsbetingelser"
+                    className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 hover:text-[#0b5a47]"
+                  >
+                    handelsbetingelser
+                  </Link>{" "}
+                  og{" "}
+                  <Link
+                    href="/privatlivspolitik"
+                    className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 hover:text-[#0b5a47]"
+                  >
+                    privatlivspolitik
+                  </Link>
+                  .
+                </p>
               </div>
             </div>
           </div>

@@ -72,16 +72,11 @@ export async function POST(
       );
     }
 
-    const {
-      data: preparedData,
-      error: prepareError,
-    } = await supabaseAdmin.rpc(
-      "prepare_order_payout",
-      {
+    const { data: preparedData, error: prepareError } =
+      await supabaseAdmin.rpc("prepare_order_payout", {
         p_order_id: orderId,
         p_buyer_id: user.id,
-      },
-    );
+      });
 
     if (prepareError) {
       throw new Error(prepareError.message);
@@ -99,13 +94,14 @@ export async function POST(
       preparedOrder.payout_status === "paid" &&
       preparedOrder.stripe_transfer_id
     ) {
+      await ensureReviewNotification(preparedOrder);
+
       const response: SuccessResponse = {
         success: true,
         alreadyCompleted: true,
         transferId: preparedOrder.stripe_transfer_id,
         completedWithoutTransfer: false,
-        message:
-          "Ordren var allerede afsluttet og udbetalt.",
+        message: "Ordren var allerede afsluttet og udbetalt.",
         order: preparedOrder,
       };
 
@@ -116,13 +112,14 @@ export async function POST(
       preparedOrder.payout_status === "paid" &&
       preparedOrder.payout_completed_without_transfer
     ) {
+      await ensureReviewNotification(preparedOrder);
+
       const response: SuccessResponse = {
         success: true,
         alreadyCompleted: true,
         transferId: null,
         completedWithoutTransfer: true,
-        message:
-          "Ordren er afsluttet. Der var intet beløb til udbetaling til sælgeren.",
+        message: "Ordren var allerede afsluttet.",
         order: preparedOrder,
       };
 
@@ -140,23 +137,24 @@ export async function POST(
     }
 
     if (payoutAmount === 0) {
-      const {
-        data: finalizedData,
-        error: finalizeError,
-      } = await supabaseAdmin.rpc(
-        "finalize_order_without_transfer",
-        {
-          p_order_id: preparedOrder.id,
-          p_buyer_id: user.id,
-        },
-      );
+      const { data: finalizedData, error: finalizeError } =
+        await supabaseAdmin.rpc(
+          "finalize_order_without_transfer",
+          {
+            p_order_id: preparedOrder.id,
+            p_buyer_id: user.id,
+          },
+        );
 
       if (finalizeError) {
         throw new Error(finalizeError.message);
       }
 
-      const finalizedOrder =
-        normalizeOrder(finalizedData);
+      const finalizedOrder = normalizeOrder(finalizedData);
+
+      await ensureReviewNotification(
+        finalizedOrder ?? preparedOrder,
+      );
 
       const response: SuccessResponse = {
         success: true,
@@ -164,7 +162,7 @@ export async function POST(
         transferId: null,
         completedWithoutTransfer: true,
         message:
-          "Ordren er afsluttet. Hele sælgerens udbetaling blev modregnet i tidligere reguleringer.",
+          "Ordren er afsluttet. Der var intet beløb til udbetaling til sælgeren.",
         order: finalizedOrder,
       };
 
@@ -172,9 +170,7 @@ export async function POST(
     }
 
     if (!preparedOrder.stripe_charge_id) {
-      throw new Error(
-        "Ordren mangler Stripe charge-id.",
-      );
+      throw new Error("Ordren mangler Stripe charge-id.");
     }
 
     if (!preparedOrder.seller_stripe_account_id) {
@@ -199,8 +195,7 @@ export async function POST(
           preparedOrder.seller_stripe_account_id,
         source_transaction:
           preparedOrder.stripe_charge_id,
-        transfer_group:
-          `ORDER_${preparedOrder.id}`,
+        transfer_group: `ORDER_${preparedOrder.id}`,
         metadata: {
           order_id: preparedOrder.id,
           buyer_id: preparedOrder.buyer_id,
@@ -221,17 +216,15 @@ export async function POST(
       },
     );
 
-    const {
-      data: finalizedData,
-      error: finalizeError,
-    } = await supabaseAdmin.rpc(
-      "finalize_order_after_transfer",
-      {
-        p_order_id: preparedOrder.id,
-        p_buyer_id: user.id,
-        p_transfer_id: transfer.id,
-      },
-    );
+    const { data: finalizedData, error: finalizeError } =
+      await supabaseAdmin.rpc(
+        "finalize_order_after_transfer",
+        {
+          p_order_id: preparedOrder.id,
+          p_buyer_id: user.id,
+          p_transfer_id: transfer.id,
+        },
+      );
 
     if (finalizeError) {
       console.error(
@@ -248,11 +241,15 @@ export async function POST(
       );
     }
 
-    const finalizedOrder =
-      normalizeOrder(finalizedData);
+    const finalizedOrder = normalizeOrder(finalizedData);
 
-    const payoutAdjustmentAmount =
-      toNumber(preparedOrder.payout_adjustment_amount);
+    await ensureReviewNotification(
+      finalizedOrder ?? preparedOrder,
+    );
+
+    const payoutAdjustmentAmount = toNumber(
+      preparedOrder.payout_adjustment_amount,
+    );
 
     const response: SuccessResponse = {
       success: true,
@@ -269,28 +266,19 @@ export async function POST(
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error(
-      "Ordren kunne ikke afsluttes:",
-      error,
-    );
+    console.error("Ordren kunne ikke afsluttes:", error);
 
-    if (
-      preparedOrder &&
-      !stripeRequestStarted
-    ) {
+    if (preparedOrder && !stripeRequestStarted) {
       const errorText =
         error instanceof Error
           ? error.message
           : "Ukendt udbetalingsfejl.";
 
       const { error: failError } =
-        await supabaseAdmin.rpc(
-          "fail_order_payout",
-          {
-            p_order_id: preparedOrder.id,
-            p_error: errorText,
-          },
-        );
+        await supabaseAdmin.rpc("fail_order_payout", {
+          p_order_id: preparedOrder.id,
+          p_error: errorText,
+        });
 
       if (failError) {
         console.error(
@@ -314,9 +302,50 @@ export async function POST(
   }
 }
 
-async function getAuthenticatedUser(
-  request: NextRequest,
-) {
+async function ensureReviewNotification(order: PreparedOrder) {
+  try {
+    const { data: existingNotification, error: lookupError } =
+      await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", order.buyer_id)
+        .eq("order_id", order.id)
+        .eq("notification_type", "order_completed")
+        .eq("title", "Hvordan gik handlen?")
+        .maybeSingle();
+
+    if (lookupError) {
+      throw lookupError;
+    }
+
+    if (existingNotification) {
+      return;
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from("notifications")
+      .insert({
+        user_id: order.buyer_id,
+        order_id: order.id,
+        notification_type: "order_completed",
+        title: "Hvordan gik handlen?",
+        message:
+          "Du har modtaget din vare. Skriv en anmeldelse af sælgeren.",
+        href: "/mine-ordrer",
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  } catch (error) {
+    console.error(
+      "Anmeldelsesnotifikationen kunne ikke oprettes:",
+      error,
+    );
+  }
+}
+
+async function getAuthenticatedUser(request: NextRequest) {
   const authorization =
     request.headers.get("authorization");
 
@@ -346,9 +375,7 @@ async function getAuthenticatedUser(
   const {
     data: { user },
     error,
-  } = await supabaseUser.auth.getUser(
-    accessToken,
-  );
+  } = await supabaseUser.auth.getUser(accessToken);
 
   if (error || !user) {
     return null;
@@ -362,32 +389,24 @@ function normalizeOrder(
 ): PreparedOrder | null {
   if (Array.isArray(value)) {
     return (
-      (value[0] as PreparedOrder | undefined) ??
-      null
+      (value[0] as PreparedOrder | undefined) ?? null
     );
   }
 
-  if (
-    value &&
-    typeof value === "object"
-  ) {
+  if (value && typeof value === "object") {
     return value as PreparedOrder;
   }
 
   return null;
 }
 
-function toNumber(
-  value: NumericValue,
-): number | null {
+function toNumber(value: NumericValue): number | null {
   if (value === null) {
     return null;
   }
 
   const numberValue =
-    typeof value === "number"
-      ? value
-      : Number(value);
+    typeof value === "number" ? value : Number(value);
 
   if (!Number.isFinite(numberValue)) {
     return null;

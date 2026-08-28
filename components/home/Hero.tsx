@@ -15,7 +15,8 @@ type HeroProps = {
 
 export default function Hero({
   title,
-  description = "Køb og sælg kvalitetsudstyr til hest og rytter – nemt, sikkert og bæredygtigt.",
+  description =
+    "Køb og sælg kvalitetsudstyr til hest og rytter – nemt, sikkert og bæredygtigt.",
   image = "/images/hero-horse.png",
   listingsCount,
   showSearch = true,
@@ -48,8 +49,8 @@ export default function Hero({
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/60" />
 
         <div className="absolute inset-0 flex items-end pb-8 md:pb-12">
-          <div className="mx-auto flex h-full w-full max-w-[1800px] items-end px-6 md:px-16">
-            <div className="max-w-xl mb-8 md:mb-22 lg:mb-28 md:ml-0 lg:-ml-24 xl:-ml-5">
+          <div className="mx-auto flex h-full w-full max-w-7xl items-end px-4 sm:px-6 lg:px-8">
+            <div className="mb-8 w-full max-w-xl md:mb-20 lg:mb-24">
               <p className="mb-5 text-[12px] uppercase tracking-[0.38em] text-[#d4af37]">
                 Premium secondhand til hest & rytter
               </p>
@@ -61,10 +62,10 @@ export default function Hero({
               )}
 
               {showSearch && (
-                <div className="mb-7">
+                <div className="mb-7 w-full">
                   <form
                     onSubmit={handleSubmit}
-                    className="flex max-w-xl rounded-full bg-white p-2 shadow-2xl"
+                    className="flex w-full max-w-xl rounded-full bg-white p-2 shadow-2xl"
                   >
                     <div className="flex min-w-0 flex-1 items-center pl-4">
                       <Search className="h-5 w-5 shrink-0 text-stone-400" />
@@ -81,7 +82,7 @@ export default function Hero({
 
                     <button
                       type="submit"
-                      className="rounded-full bg-[#d4af37] px-7 py-4 text-sm font-semibold text-black transition hover:brightness-95"
+                      className="shrink-0 rounded-full bg-[#d4af37] px-7 py-4 text-sm font-semibold text-black transition hover:brightness-95"
                     >
                       Søg
                     </button>
