@@ -14,6 +14,7 @@ type StripeResponse = {
   url?: string;
   error?: string;
   needsOnboarding?: boolean;
+  connectionReset?: boolean;
 };
 
 export default function StripeConnectCard({
@@ -114,9 +115,12 @@ export default function StripeConnectCard({
 
       if (response.status === 409 && result.needsOnboarding) {
         setNeedsReconnect(true);
-        setMessage(
-          "Din tidligere Stripe-forbindelse tilhører ikke det aktive live-miljø. Forbind Stripe igen for at modtage udbetalinger.",
-        );
+        setMessage("");
+
+        if (result.connectionReset) {
+          await refreshProfileState();
+        }
+
         setLoading(false);
         return;
       }
@@ -137,6 +141,28 @@ export default function StripeConnectCard({
           : "Stripe-kontoen kunne ikke åbnes.",
       );
       setLoading(false);
+    }
+  }
+
+  async function refreshProfileState() {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return;
+      }
+
+      await supabase
+        .from("profiles")
+        .select(
+          "stripe_account_id,stripe_details_submitted,stripe_charges_enabled,stripe_payouts_enabled",
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+    } catch (error) {
+      console.error("Kunne ikke opdatere Stripe-status lokalt:", error);
     }
   }
 
@@ -191,7 +217,7 @@ export default function StripeConnectCard({
               </p>
               <p className="mt-1 text-sm leading-6 text-amber-800">
                 {needsReconnect
-                  ? "Din tidligere forbindelse kan ikke bruges i det aktive Stripe live-miljø."
+                  ? "Din tidligere forbindelse kan ikke bruges i det aktive Stripe live-miljø. Opret en ny forbindelse til Stripe for at modtage udbetalinger."
                   : "Stripe bruges til sikker udbetaling, når du sælger en vare."}
               </p>
             </div>
@@ -214,7 +240,7 @@ export default function StripeConnectCard({
                 disabled={loading}
                 className="inline-flex items-center justify-center rounded-full bg-[#063f32] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#0b5a47] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Åbner Stripe..." : "Administrer Stripe-konto"}
+                {loading ? "Kontrollerer Stripe..." : "Administrer Stripe-konto"}
               </button>
             ) : (
               <button

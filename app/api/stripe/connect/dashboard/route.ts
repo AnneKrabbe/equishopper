@@ -50,30 +50,33 @@ export async function POST(request: NextRequest) {
       );
 
       if ("deleted" in account && account.deleted) {
+        await clearStripeConnection(user.id);
+
         return NextResponse.json(
           {
             error: "Din Stripe-konto skal forbindes igen.",
             needsOnboarding: true,
+            connectionReset: true,
           },
           { status: 409 },
         );
       }
     } catch (error) {
-      /*
-       * Typisk når profilen stadig indeholder et acct_... fra Stripe test,
-       * mens serveren nu kører med live-nøglen.
-       */
-      if (isMissingStripeResourceError(error)) {
+      if (isMissingOrInaccessibleStripeAccount(error)) {
+        await clearStripeConnection(user.id);
+
         return NextResponse.json(
           {
-            error: "Din Stripe-konto skal forbindes igen i live-miljøet.",
+            error:
+              "Din tidligere Stripe-forbindelse kan ikke bruges i det aktive live-miljø.",
             needsOnboarding: true,
+            connectionReset: true,
           },
           { status: 409 },
         );
       }
 
-      throw error;
+      throw sanitizeStripeError(error);
     }
 
     const loginLink = await stripe.accounts.createLoginLink(
@@ -135,9 +138,49 @@ async function getAuthenticatedUser(request: NextRequest) {
   return user;
 }
 
-function isMissingStripeResourceError(error: unknown) {
+async function clearStripeConnection(profileId: string) {
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      stripe_account_id: null,
+      stripe_details_submitted: false,
+      stripe_charges_enabled: false,
+      stripe_payouts_enabled: false,
+      stripe_onboarding_completed_at: null,
+      stripe_account_updated_at: new Date().toISOString(),
+    })
+    .eq("id", profileId);
+
+  if (error) {
+    console.error("Kunne ikke nulstille Stripe-forbindelsen:", error);
+    throw new Error(
+      "Din gamle Stripe-forbindelse blev fundet, men kunne ikke nulstilles. Prøv igen.",
+    );
+  }
+}
+
+function isMissingOrInaccessibleStripeAccount(error: unknown) {
+  if (!(error instanceof Stripe.errors.StripeError)) {
+    return false;
+  }
+
+  const message = (error.message ?? "").toLowerCase();
+
   return (
-    error instanceof Stripe.errors.StripeInvalidRequestError &&
-    error.code === "resource_missing"
+    error.code === "resource_missing" ||
+    message.includes("does not have access to account") ||
+    message.includes("account does not exist") ||
+    message.includes("application access may have been revoked") ||
+    message.includes("no such account")
   );
+}
+
+function sanitizeStripeError(error: unknown) {
+  if (error instanceof Stripe.errors.StripeError) {
+    return new Error(
+      "Stripe-kontoen kunne ikke åbnes. Prøv igen om et øjeblik.",
+    );
+  }
+
+  return error;
 }
