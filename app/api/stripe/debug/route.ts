@@ -28,78 +28,67 @@ export async function GET() {
       .single();
 
     if (profileError) {
-      console.error("Stripe debug: profil kunne ikke hentes", profileError);
       return NextResponse.json(
         { error: "Kunne ikke hente Stripe-oplysninger fra profilen." },
         { status: 500 }
       );
     }
 
-    const platformAccount = await stripe.accounts.retrieve();
+    const secretKey = process.env.STRIPE_SECRET_KEY ?? "";
+    const environment = secretKey.startsWith("sk_live_")
+      ? "live"
+      : secretKey.startsWith("sk_test_")
+        ? "test"
+        : "ukendt";
 
-    let connectedAccountCheck:
-      | {
-          storedAccount: string | null;
-          accessible: boolean;
-          livemode: boolean | null;
-          detailsSubmitted: boolean | null;
-          payoutsEnabled: boolean | null;
-          reason?: string;
-        }
-      | null = null;
+    let connectedAccount: {
+      storedAccount: string | null;
+      accessible: boolean;
+      detailsSubmitted: boolean | null;
+      payoutsEnabled: boolean | null;
+      reason?: string;
+    } | null = null;
 
     if (profile?.stripe_account_id) {
       try {
-        const connectedAccount = await stripe.accounts.retrieve(
+        const account = await stripe.accounts.retrieve(
           profile.stripe_account_id
         );
 
-        connectedAccountCheck = {
-          storedAccount: maskId(profile.stripe_account_id),
-          accessible: !connectedAccount.deleted,
-          livemode: connectedAccount.deleted ? null : connectedAccount.livemode,
-          detailsSubmitted: connectedAccount.deleted
-            ? null
-            : connectedAccount.details_submitted,
-          payoutsEnabled: connectedAccount.deleted
-            ? null
-            : connectedAccount.payouts_enabled,
-        };
+        if ("deleted" in account && account.deleted) {
+          connectedAccount = {
+            storedAccount: maskId(profile.stripe_account_id),
+            accessible: false,
+            detailsSubmitted: null,
+            payoutsEnabled: null,
+            reason: "Den gemte Stripe-konto er slettet.",
+          };
+        } else {
+          connectedAccount = {
+            storedAccount: maskId(profile.stripe_account_id),
+            accessible: true,
+            detailsSubmitted: account.details_submitted,
+            payoutsEnabled: account.payouts_enabled,
+          };
+        }
       } catch (error) {
         console.error("Stripe debug: connected account kan ikke tilgås", error);
 
-        connectedAccountCheck = {
+        connectedAccount = {
           storedAccount: maskId(profile.stripe_account_id),
           accessible: false,
-          livemode: null,
           detailsSubmitted: null,
           payoutsEnabled: null,
           reason:
-            "Den Stripe-konto, der er gemt på profilen, kan ikke tilgås med den aktive STRIPE_SECRET_KEY.",
+            "Den gemte Stripe-konto kan ikke tilgås med den aktive STRIPE_SECRET_KEY.",
         };
       }
     }
 
-    if (platformAccount.deleted) {
-      return NextResponse.json(
-        { error: "Stripe-platformkontoen er markeret som slettet." },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({
       ok: true,
-      environment: platformAccount.livemode ? "live" : "test",
-      platform: {
-        account: maskId(platformAccount.id),
-        country: platformAccount.country ?? null,
-        email: platformAccount.email ?? null,
-        displayName:
-          platformAccount.settings?.dashboard?.display_name ??
-          platformAccount.business_profile?.name ??
-          null,
-      },
-      connectedAccount: connectedAccountCheck,
+      environment,
+      connectedAccount,
     });
   } catch (error) {
     console.error("Stripe debug route fejlede", error);
