@@ -26,6 +26,7 @@ type CartRow = {
     price: number;
     seller_id: string;
     shipping_available: boolean | null;
+    pickup_available: boolean | null;
     shipping_product_id: string | null;
     shipping_product: {
       id: string;
@@ -115,6 +116,7 @@ export default function CartPage() {
   const [phone, setPhone] = useState("");
   const [shippingNote, setShippingNote] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [useAlternateAddress, setUseAlternateAddress] = useState(false);
 
   const [servicePoints, setServicePoints] = useState<DaoServicePoint[]>([]);
   const [selectedServicePointId, setSelectedServicePointId] = useState("");
@@ -123,6 +125,13 @@ export default function CartPage() {
 
   useEffect(() => {
     void loadCart();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("betaling") === "annulleret") {
+      setErrorMessage(
+        "Betalingen blev ikke gennemført. Varen er ikke købt. Reservationen frigives automatisk senest efter 30 minutter.",
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -273,6 +282,7 @@ export default function CartPage() {
             price,
             seller_id,
             shipping_available,
+            pickup_available,
             shipping_product_id,
             shipping_product:shipping_products (
               id,
@@ -308,12 +318,17 @@ export default function CartPage() {
 
       setItems(validRows);
 
-      if (
-        validRows.some(
-          (row) => row.listing?.shipping_available === false,
-        )
-      ) {
+      const shippingUnavailable = validRows.some(
+        (row) => row.listing?.shipping_available === false,
+      );
+      const pickupUnavailable = validRows.some(
+        (row) => row.listing?.pickup_available === false,
+      );
+
+      if (shippingUnavailable && !pickupUnavailable) {
         setShippingMethod("pickup");
+      } else if (pickupUnavailable && !shippingUnavailable) {
+        setShippingMethod("shipping");
       }
 
       const { data: profile, error: profileError } = await supabase
@@ -398,6 +413,10 @@ export default function CartPage() {
     subtotal + shippingTotal + buyerProtectionFee,
   );
 
+  const hasPickupUnavailableItem = items.some(
+    (item) => item.listing?.pickup_available === false,
+  );
+
   const hasShippingUnavailableItem = items.some((item) => {
     const listing = item.listing;
     const product = listing?.shipping_product;
@@ -459,6 +478,16 @@ export default function CartPage() {
     event.preventDefault();
 
     if (items.length === 0 || submitting) {
+      return;
+    }
+
+    if (
+      shippingMethod === "pickup" &&
+      hasPickupUnavailableItem
+    ) {
+      setErrorMessage(
+        "Afhentning er ikke muligt for en eller flere varer. Vælg fragt.",
+      );
       return;
     }
 
@@ -812,8 +841,8 @@ export default function CartPage() {
 
                   <label
                     className={`rounded-2xl border p-4 ${
-                      submitting
-                        ? "cursor-not-allowed opacity-60"
+                      hasPickupUnavailableItem || submitting
+                        ? "cursor-not-allowed bg-stone-50 opacity-60"
                         : "cursor-pointer"
                     } ${
                       shippingMethod === "pickup"
@@ -826,7 +855,7 @@ export default function CartPage() {
                       name="shippingMethod"
                       value="pickup"
                       checked={shippingMethod === "pickup"}
-                      disabled={submitting}
+                      disabled={hasPickupUnavailableItem || submitting}
                       onChange={() =>
                         setShippingMethod("pickup")
                       }
@@ -838,55 +867,98 @@ export default function CartPage() {
                     </span>
 
                     <span className="mt-1 block pl-6 text-sm text-stone-500">
-                      0 kr. – adresse aftales efter ordren
+                      {hasPickupUnavailableItem
+                        ? "Ikke muligt for en eller flere varer"
+                        : "0 kr. – skriv til sælger for at aftale nærmere om afhentning"}
                     </span>
                   </label>
                 </div>
 
                 {shippingMethod === "shipping" && (
                   <div className="mt-6 space-y-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field
-                        label="Fulde navn"
-                        value={fullName}
-                        onChange={setFullName}
-                        autoComplete="name"
-                        disabled={submitting}
-                      />
+                    <div className="rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-4 md:p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-stone-500">
+                            Leveringsadresse
+                          </p>
 
-                      <Field
-                        label="Telefon"
-                        value={phone}
-                        onChange={setPhone}
-                        autoComplete="tel"
-                        disabled={submitting}
-                      />
+                          <p className="mt-2 font-semibold text-[#063f32]">
+                            {fullName || "Navn mangler"}
+                          </p>
 
-                      <div className="sm:col-span-2">
-                        <Field
-                          label="Adresse"
-                          value={addressLine1}
-                          onChange={setAddressLine1}
-                          autoComplete="street-address"
+                          <p className="mt-1 text-sm leading-6 text-stone-600">
+                            {addressLine1 || "Adresse mangler"}
+                            <br />
+                            {postalCode || "----"} {city || "By mangler"}
+                          </p>
+
+                          {phone && (
+                            <p className="mt-1 text-sm text-stone-500">
+                              {phone}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUseAlternateAddress((current) => !current)
+                          }
                           disabled={submitting}
-                        />
+                          className="self-start rounded-full border border-[#0b5a47] px-4 py-2 text-sm font-semibold text-[#063f32] transition hover:bg-[#edf4ef] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {useAlternateAddress
+                            ? "Brug profiladressen"
+                            : "Brug en anden adresse"}
+                        </button>
                       </div>
 
-                      <Field
-                        label="Postnummer"
-                        value={postalCode}
-                        onChange={setPostalCode}
-                        autoComplete="postal-code"
-                        disabled={submitting}
-                      />
+                      {useAlternateAddress && (
+                        <div className="mt-5 grid gap-4 border-t border-[#eadfcb] pt-5 sm:grid-cols-2">
+                          <Field
+                            label="Fulde navn"
+                            value={fullName}
+                            onChange={setFullName}
+                            autoComplete="name"
+                            disabled={submitting}
+                          />
 
-                      <Field
-                        label="By"
-                        value={city}
-                        onChange={setCity}
-                        autoComplete="address-level2"
-                        disabled={submitting}
-                      />
+                          <Field
+                            label="Telefon"
+                            value={phone}
+                            onChange={setPhone}
+                            autoComplete="tel"
+                            disabled={submitting}
+                          />
+
+                          <div className="sm:col-span-2">
+                            <Field
+                              label="Adresse"
+                              value={addressLine1}
+                              onChange={setAddressLine1}
+                              autoComplete="street-address"
+                              disabled={submitting}
+                            />
+                          </div>
+
+                          <Field
+                            label="Postnummer"
+                            value={postalCode}
+                            onChange={setPostalCode}
+                            autoComplete="postal-code"
+                            disabled={submitting}
+                          />
+
+                          <Field
+                            label="By"
+                            value={city}
+                            onChange={setCity}
+                            autoComplete="address-level2"
+                            disabled={submitting}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-4 md:p-5">
@@ -1076,7 +1148,9 @@ export default function CartPage() {
                     !acceptedTerms ||
                     (shippingMethod === "shipping" &&
                       (hasShippingUnavailableItem ||
-                        !selectedServicePoint))
+                        !selectedServicePoint)) ||
+                    (shippingMethod === "pickup" &&
+                      hasPickupUnavailableItem)
                   }
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-4 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
                 >

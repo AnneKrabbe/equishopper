@@ -12,6 +12,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import Header from "@/components/home/Header";
 import { HeartIcon as HeartIconOutline } from "@heroicons/react/24/outline";
+import { Info } from "lucide-react";
 
 import {
   getCategoryGroups,
@@ -100,6 +101,7 @@ export default function SellPage() {
   const [location, setLocation] = useState("");
 
   const [shippingAvailable, setShippingAvailable] = useState(true);
+  const [pickupAvailable, setPickupAvailable] = useState(true);
   const [shippingProducts, setShippingProducts] = useState<ShippingProduct[]>([]);
   const [shippingProductsLoading, setShippingProductsLoading] = useState(true);
   const [selectedShippingProductId, setSelectedShippingProductId] =
@@ -537,8 +539,9 @@ const filteredBrands = brandOptions
               selectedShippingProduct.currency,
             )}`
           : "Vælg pakkestørrelse"
-        : "Kun afhentning",
+        : "Nej",
     ],
+    ["Afhentning", pickupAvailable ? "Ja" : "Nej"],
     ["Kvittering", receipt ? "Ja" : "Nej"],
   ];
 
@@ -711,6 +714,11 @@ function resetCategoryFields(newMainCategory: string) {
       return;
     }
 
+    if (!shippingAvailable && !pickupAvailable) {
+      setMessage("Vælg mindst én leveringsmulighed: fragt eller afhentning.");
+      return;
+    }
+
     if (shippingAvailable) {
       if (shippingProductsLoading) {
         setMessage(
@@ -807,6 +815,7 @@ const { data: listing, error } = await supabase
     longitude: profile?.longitude ?? null,
 
     shipping_available: shippingAvailable,
+    pickup_available: pickupAvailable,
     shipping_product_id:
       shippingAvailable && selectedShippingProduct
         ? selectedShippingProduct.id
@@ -1075,7 +1084,29 @@ const { data: listing, error } = await supabase
     />
   </Field>
 
-  <Field label="Mærke" required>
+  <Field
+    label={
+      <span className="inline-flex items-center gap-1.5">
+        <span>Mærke</span>
+        <span className="group relative inline-flex">
+          <button
+            type="button"
+            aria-label="Information om valg af mærke"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-stone-400 transition hover:text-[#063f32] focus:outline-none focus:ring-2 focus:ring-[#d4af37]/40"
+          >
+            <Info className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-64 -translate-x-1/2 rounded-xl bg-[#063f32] px-3 py-2.5 text-xs font-normal leading-5 text-white shadow-lg group-hover:block group-focus-within:block"
+          >
+            Hvis mærket ikke findes på listen, vælg “Andet” og skriv mærket manuelt.
+          </span>
+        </span>
+      </span>
+    }
+    required
+  >
     <Autocomplete
       value={brandSearch}
       options={filteredBrands}
@@ -1351,12 +1382,19 @@ const { data: listing, error } = await supabase
                 Yderligere oplysninger
               </h2>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <ChoiceCard
                   title="Fragt muligt"
-                  description="Køberen kan få varen sendt"
+                  description="Køberen kan få varen sendt med DAO"
                   checked={shippingAvailable}
                   onChange={setShippingAvailable}
+                />
+
+                <ChoiceCard
+                  title="Afhentning muligt"
+                  description="Køberen kan hente varen efter aftale"
+                  checked={pickupAvailable}
+                  onChange={setPickupAvailable}
                 />
 
                 <ChoiceCard
@@ -1812,7 +1850,7 @@ function Field({
   required = false,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   required?: boolean;
   children: ReactNode;
 }) {

@@ -225,6 +225,47 @@ async function handleCheckoutPaid(
   const order = updatedOrder as PaidOrderRow;
 
   /*
+   * Betalingen er nu bekræftet.
+   * Fjern først nu de købte varer fra køberens kurv.
+   *
+   * release_listing_on_cart_delete-triggeren frigiver dem ikke,
+   * fordi ordren allerede er betalt, og annoncen fastlåses som solgt
+   * umiddelbart efter.
+   */
+  const { data: paidCartItems, error: paidCartItemsError } =
+    await supabaseAdmin
+      .from("order_items")
+      .select("listing_id")
+      .eq("order_id", order.id);
+
+  if (paidCartItemsError) {
+    throw paidCartItemsError;
+  }
+
+  const cartListingIds = Array.from(
+    new Set(
+      (paidCartItems ?? [])
+        .map((item) => item.listing_id)
+        .filter(
+          (listingId): listingId is string =>
+            typeof listingId === "string" && listingId.length > 0,
+        ),
+    ),
+  );
+
+  if (cartListingIds.length > 0) {
+    const { error: cartDeleteError } = await supabaseAdmin
+      .from("cart_items")
+      .delete()
+      .eq("user_id", order.buyer_id)
+      .in("listing_id", cartListingIds);
+
+    if (cartDeleteError) {
+      throw cartDeleteError;
+    }
+  }
+
+  /*
    * En betalt vare skal forblive skjult fra markedspladsen.
    * Vi fastlåser derfor annoncen som reserved til den konkrete køber.
    */

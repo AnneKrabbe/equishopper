@@ -58,6 +58,7 @@ type ShippingProductRow = {
 type ListingShippingRow = {
   id: string;
   shipping_available: boolean | null;
+  pickup_available: boolean | null;
   shipping_product_id: string | null;
   shipping_product: ShippingProductRow | null;
 };
@@ -90,6 +91,12 @@ function buildShippingSnapshot(
   shippingMethod: "shipping" | "pickup",
 ): ShippingSnapshot {
   if (shippingMethod === "pickup") {
+    if (listings.some((listing) => listing.pickup_available === false)) {
+      throw new Error(
+        "Afhentning er ikke muligt for en eller flere varer. Vælg fragt.",
+      );
+    }
+
     return {
       shippingPrice: 0,
       shippingPriceAmount: 0,
@@ -395,6 +402,7 @@ export async function POST(request: NextRequest) {
       .select(`
         id,
         shipping_available,
+        pickup_available,
         shipping_product_id,
         shipping_product:shipping_products (
           id,

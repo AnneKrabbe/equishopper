@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { sendReviewReminderEmail } from "@/lib/email/email-service";
 
 export const runtime = "nodejs";
 
@@ -95,6 +96,7 @@ export async function POST(
       preparedOrder.stripe_transfer_id
     ) {
       await ensureReviewNotification(preparedOrder);
+      await ensureReviewReminderEmail(preparedOrder);
 
       const response: SuccessResponse = {
         success: true,
@@ -113,6 +115,7 @@ export async function POST(
       preparedOrder.payout_completed_without_transfer
     ) {
       await ensureReviewNotification(preparedOrder);
+      await ensureReviewReminderEmail(preparedOrder);
 
       const response: SuccessResponse = {
         success: true,
@@ -155,6 +158,7 @@ export async function POST(
       await ensureReviewNotification(
         finalizedOrder ?? preparedOrder,
       );
+      await ensureReviewReminderEmail(finalizedOrder ?? preparedOrder);
 
       const response: SuccessResponse = {
         success: true,
@@ -246,6 +250,7 @@ export async function POST(
     await ensureReviewNotification(
       finalizedOrder ?? preparedOrder,
     );
+    await ensureReviewReminderEmail(finalizedOrder ?? preparedOrder);
 
     const payoutAdjustmentAmount = toNumber(
       preparedOrder.payout_adjustment_amount,
@@ -340,6 +345,130 @@ async function ensureReviewNotification(order: PreparedOrder) {
   } catch (error) {
     console.error(
       "Anmeldelsesnotifikationen kunne ikke oprettes:",
+      error,
+    );
+  }
+}
+
+async function ensureReviewReminderEmail(order: PreparedOrder) {
+  try {
+    const { data: buyerAuth, error: buyerAuthError } =
+      await supabaseAdmin.auth.admin.getUserById(order.buyer_id);
+
+    if (buyerAuthError) {
+      throw buyerAuthError;
+    }
+
+    const buyerEmail = buyerAuth.user?.email;
+
+    if (!buyerEmail) {
+      console.warn(
+        "Anmeldelsesmail blev ikke sendt: køber mangler e-mail.",
+        { orderId: order.id },
+      );
+      return;
+    }
+
+    const { data: buyerProfile, error: buyerProfileError } =
+      await supabaseAdmin
+        .from("profiles")
+        .select("full_name")
+        .eq("id", order.buyer_id)
+        .maybeSingle();
+
+    if (buyerProfileError) {
+      console.error(
+        "Kunne ikke hente køberprofil til anmeldelsesmail:",
+        buyerProfileError,
+      );
+    }
+
+    const { data: sellerProfile, error: sellerProfileError } =
+      await supabaseAdmin
+        .from("profiles")
+        .select("full_name, username")
+        .eq("id", order.seller_id)
+        .maybeSingle();
+
+    if (sellerProfileError) {
+      console.error(
+        "Kunne ikke hente sælgerprofil til anmeldelsesmail:",
+        sellerProfileError,
+      );
+    }
+
+    const { data: orderItem, error: orderItemError } =
+      await supabaseAdmin
+        .from("order_items")
+        .select("listing_id, title_snapshot")
+        .eq("order_id", order.id)
+        .limit(1)
+        .maybeSingle();
+
+    if (orderItemError) {
+      throw orderItemError;
+    }
+
+    const listingTitle =
+      orderItem?.title_snapshot?.trim() || "din handel";
+
+    let listingImageUrl: string | null = null;
+
+    if (orderItem?.listing_id) {
+      const { data: listing, error: listingError } =
+        await supabaseAdmin
+          .from("listings")
+          .select("images")
+          .eq("id", orderItem.listing_id)
+          .maybeSingle();
+
+      if (listingError) {
+        console.error(
+          "Kunne ikke hente varebillede til anmeldelsesmail:",
+          listingError,
+        );
+      } else if (Array.isArray(listing?.images) && listing.images.length > 0) {
+        listingImageUrl =
+          typeof listing.images[0] === "string"
+            ? listing.images[0]
+            : null;
+      }
+    }
+
+    const otherPartyName =
+      sellerProfile?.full_name?.trim() ||
+      sellerProfile?.username?.trim() ||
+      "sælgeren";
+
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://equishopper.dk";
+
+    const reviewUrl =
+      `${siteUrl.replace(/\/$/, "")}/mine-ordrer`;
+
+    await sendReviewReminderEmail({
+      to: {
+        email: buyerEmail,
+        name: buyerProfile?.full_name ?? null,
+      },
+      props: {
+        recipientName: buyerProfile?.full_name ?? null,
+        otherPartyName,
+        listingTitle,
+        listingImageUrl,
+        transactionRole: "buyer",
+        reviewUrl,
+      },
+    });
+  } catch (error) {
+    /*
+     * En mailfejl må aldrig blokere afslutning af ordren
+     * eller udbetalingen til sælger.
+     */
+    console.error(
+      "Anmeldelsesmailen kunne ikke sendes:",
       error,
     );
   }

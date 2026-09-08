@@ -1096,29 +1096,51 @@ export default function ListingPageClient({
         Sælger
       </p>
 
-      <div className="mt-4 flex items-center gap-4">
-        {sellerProfile?.avatar_url ? (
-          <img
-            src={sellerProfile.avatar_url}
-            alt={sellerDisplayName}
-            className="h-14 w-14 flex-none rounded-full object-cover"
-          />
-        ) : (
+      {sellerProfile ? (
+        <Link
+          href={sellerProfileHref}
+          className="mt-4 flex items-center gap-4 rounded-2xl transition hover:bg-[#f8f6f1]"
+          aria-label={`Se ${sellerDisplayName}s profil`}
+        >
+          {sellerProfile.avatar_url ? (
+            <img
+              src={sellerProfile.avatar_url}
+              alt={sellerDisplayName}
+              className="h-14 w-14 flex-none rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-[#063f32] font-semibold text-[#d4af37]">
+              {sellerInitials}
+            </div>
+          )}
+
+          <div className="min-w-0">
+            <p className="truncate font-serif text-xl text-[#063f32] hover:underline">
+              {sellerDisplayName}
+            </p>
+
+            <p className="mt-0.5 text-sm text-stone-500">
+              {sellerLocation}
+            </p>
+          </div>
+        </Link>
+      ) : (
+        <div className="mt-4 flex items-center gap-4">
           <div className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-[#063f32] font-semibold text-[#d4af37]">
             {sellerInitials}
           </div>
-        )}
 
-        <div className="min-w-0">
-          <p className="truncate font-serif text-xl text-[#063f32]">
-            {sellerDisplayName}
-          </p>
+          <div className="min-w-0">
+            <p className="truncate font-serif text-xl text-[#063f32]">
+              {sellerDisplayName}
+            </p>
 
-          <p className="mt-0.5 text-sm text-stone-500">
-            {sellerLocation}
-          </p>
+            <p className="mt-0.5 text-sm text-stone-500">
+              {sellerLocation}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {sellerProfile?.bio && (
         <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">

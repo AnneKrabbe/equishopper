@@ -24,6 +24,7 @@ import NotificationBell from "@/components/home/NotificationBell";
 
 type ProfileSummary = {
   full_name: string | null;
+  username: string | null;
   avatar_url: string | null;
 };
 
@@ -34,6 +35,7 @@ export default function Header() {
 
   const [user, setUser] = useState<User | null>(null);
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -56,6 +58,7 @@ export default function Header() {
 
         if (!currentUser) {
           setFullName("");
+          setUsername("");
           setAvatarUrl(null);
           setAuthLoading(false);
           return;
@@ -63,7 +66,7 @@ export default function Header() {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("full_name, avatar_url")
+          .select("full_name, username, avatar_url")
           .eq("id", currentUser.id)
           .maybeSingle();
 
@@ -83,6 +86,7 @@ export default function Header() {
             ""
         );
 
+        setUsername(profile?.username ?? "");
         setAvatarUrl(profile?.avatar_url ?? null);
       } catch (error) {
         console.error("Kunne ikke hente bruger:", error);
@@ -205,6 +209,7 @@ export default function Header() {
     setProfileMenuOpen(false);
     setUser(null);
     setFullName("");
+    setUsername("");
     setAvatarUrl(null);
     setCartCount(0);
 
@@ -326,7 +331,7 @@ export default function Header() {
                       {fullName || "Din profil"}
                     </p>
                     <p className="mt-1 truncate text-sm text-[#d4af37]">
-                      {user.email}
+                      {username || "Vælg et brugernavn"}
                     </p>
                   </Link>
 
@@ -335,6 +340,13 @@ export default function Header() {
                       href="/profil"
                       label="Min profil"
                       icon={<UserRound size={19} />}
+                      onClick={() => setProfileMenuOpen(false)}
+                    />
+
+                    <ProfileMenuLink
+                      href="/mine-ordrer"
+                      label="Mine ordrer"
+                      icon={<ShoppingBag size={19} />}
                       onClick={() => setProfileMenuOpen(false)}
                     />
 
@@ -466,7 +478,7 @@ export default function Header() {
                 {fullName || "Din profil"}
               </p>
               <p className="mt-1 truncate text-sm text-[#d4af37]">
-                {user.email}
+                {username || "Vælg et brugernavn"}
               </p>
             </div>
           </Link>
@@ -483,6 +495,11 @@ export default function Header() {
 
           {user ? (
             <>
+              <MobileMenuLink
+                href="/mine-ordrer"
+                label="Mine ordrer"
+                icon={<ShoppingBag size={22} />}
+              />
               <MobileMenuLink
                 href="/kurv"
                 label={cartCount > 0 ? `Kurv (${cartCount})` : "Kurv"}

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  ExternalLink,
   Loader2,
   MapPin,
   Package,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 
 import Header from "@/components/home/Header";
+import ContactSellerButton from "@/components/listings/ContactSellerButton";
 import { supabase } from "@/lib/supabase";
 
 type FulfillmentStatus =
@@ -83,6 +85,14 @@ type ListingImageRow = {
   sort_order: number | null;
 };
 
+type SellerProfileRow = {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+};
+
+
 type ReviewRow = {
   id: string;
   order_id: string;
@@ -95,6 +105,7 @@ type ReviewRow = {
 };
 
 type OrderView = OrderRow & {
+  sellerProfile: SellerProfileRow | null;
   items: Array<
     OrderItemRow & {
       imageUrl: string | null;
@@ -214,6 +225,7 @@ export default function MyOrdersPage() {
             stripe_transfer_id
           `)
           .eq("buyer_id", user.id)
+          .eq("payment_status", "paid")
           .order("created_at", { ascending: false });
 
       if (ordersError) {
@@ -306,6 +318,29 @@ export default function MyOrdersPage() {
         new Set(itemRows.map((item) => item.listing_id)),
       );
 
+      const sellerIds = Array.from(
+        new Set(orderRows.map((order) => order.seller_id)),
+      );
+
+      let sellerProfiles: SellerProfileRow[] = [];
+
+      if (sellerIds.length > 0) {
+        const { data: sellerProfileData, error: sellerProfileError } =
+          await supabase
+            .from("profiles")
+            .select("id, full_name, username, avatar_url")
+            .in("id", sellerIds);
+
+        if (sellerProfileError) {
+          console.error(
+            "Kunne ikke hente sælgerprofiler til ordrer:",
+            sellerProfileError,
+          );
+        } else {
+          sellerProfiles = (sellerProfileData ?? []) as SellerProfileRow[];
+        }
+      }
+
       let imageRows: ListingImageRow[] = [];
 
       if (listingIds.length > 0) {
@@ -339,6 +374,9 @@ export default function MyOrdersPage() {
 
       const orderViews: OrderView[] = orderRows.map((order) => ({
         ...order,
+        sellerProfile:
+          sellerProfiles.find((profile) => profile.id === order.seller_id) ??
+          null,
         items: itemRows
           .filter((item) => item.order_id === order.id)
           .map((item) => ({
@@ -717,6 +755,41 @@ const response = await fetch("/api/reviews", {
                                   .slice(0, 8)
                                   .toUpperCase()}
                               </p>
+
+                              {order.sellerProfile && (
+                                <Link
+                                  href={`/profile/${
+                                    order.sellerProfile.username ||
+                                    order.sellerProfile.id
+                                  }`}
+                                  className="mt-4 inline-flex items-center gap-3 rounded-full bg-[#f8f6f1] py-1.5 pr-4 transition hover:bg-[#f1ece2]"
+                                >
+                                  {order.sellerProfile.avatar_url ? (
+                                    <img
+                                      src={order.sellerProfile.avatar_url}
+                                      alt={
+                                        order.sellerProfile.full_name ||
+                                        order.sellerProfile.username ||
+                                        "Sælger"
+                                      }
+                                      className="h-9 w-9 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#063f32] text-sm font-semibold text-[#d4af37]">
+                                      {getSellerInitials(order.sellerProfile)}
+                                    </div>
+                                  )}
+
+                                  <span className="text-sm">
+                                    <span className="block text-xs text-stone-500">
+                                      Sælger
+                                    </span>
+                                    <span className="font-semibold text-[#063f32] hover:underline">
+                                      {getSellerDisplayName(order.sellerProfile)}
+                                    </span>
+                                  </span>
+                                </Link>
+                              )}
                             </div>
 
                             <div className="text-left md:text-right">
@@ -803,6 +876,13 @@ const response = await fetch("/api/reviews", {
                             </button>
 
                             <div className="flex flex-col gap-3 sm:flex-row">
+                              {order.items[0]?.listing_id && (
+                                <ContactSellerButton
+                                  listingId={order.items[0].listing_id}
+                                  sellerId={order.seller_id}
+                                />
+                              )}
+
                               {activeDisputeId ? (
                                 <Link
                                   href={`/profil/tvister/${activeDisputeId}`}
@@ -1340,12 +1420,27 @@ function OrderDetails({ order }: { order: OrderView }) {
               )}
 
               {order.tracking_number && (
-                <p className="mt-1 break-all text-sm text-stone-600">
-                  {order.shipping_carrier?.toLowerCase() === "dao"
-                    ? "DAO-fragtkode"
-                    : "Trackingnummer"}
-                  : {order.tracking_number}
-                </p>
+                <>
+                  <p className="mt-1 break-all text-sm text-stone-600">
+                    {order.shipping_carrier?.toLowerCase() === "dao"
+                      ? "DAO-fragtkode"
+                      : "Trackingnummer"}
+                    : {order.tracking_number}
+                  </p>
+
+                  {order.shipping_carrier?.toLowerCase() === "dao" && (
+                    <a
+                      href={getDaoTrackingUrl(order.tracking_number)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#0b5a47] px-4 py-2 text-sm font-semibold text-[#0b5a47] transition hover:bg-[#0b5a47] hover:text-white"
+                    >
+                      <Truck className="h-4 w-4" />
+                      Følg pakken hos DAO
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1379,13 +1474,13 @@ function StatusExplanation({
     awaiting_shipment: {
       text:
         order.shipping_method === "pickup"
-          ? "Betalingen er modtaget. Sælgeren gør varen klar til afhentning."
+          ? "Betalingen er modtaget. Skriv til sælger for at aftale nærmere om afhentning."
           : "Betalingen er modtaget. Sælgeren skal nu sende varen.",
       icon: Clock3,
     },
     ready_for_pickup: {
       text:
-        "Varen er klar til afhentning. Bekræft først modtagelsen, når du har fået varen.",
+        "Varen er klar til afhentning. Skriv til sælger for at aftale tid og sted. Bekræft først modtagelsen, når du har fået varen.",
       icon: MapPin,
     },
     shipped: {
@@ -1529,6 +1624,33 @@ function getStatusLabel(status: FulfillmentStatus) {
   };
 
   return labels[status];
+}
+
+function getDaoTrackingUrl(trackingNumber: string) {
+  return `https://dao.as/track-and-trace?query=${encodeURIComponent(
+    trackingNumber.trim(),
+  )}`;
+}
+
+function getSellerDisplayName(profile: SellerProfileRow) {
+  return (
+    profile.full_name?.trim() ||
+    profile.username?.trim() ||
+    "Sælger"
+  );
+}
+
+function getSellerInitials(profile: SellerProfileRow) {
+  const name = getSellerDisplayName(profile);
+
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "S"
+  );
 }
 
 function formatMoney(

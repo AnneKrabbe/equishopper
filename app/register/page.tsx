@@ -129,7 +129,7 @@ export default function RegisterPage() {
     const filePath = `${userId}/avatar-${Date.now()}.${extension}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("avatars")
+      .from("avatar")
       .upload(filePath, avatarFile, {
         cacheControl: "3600",
         upsert: false,
@@ -140,7 +140,7 @@ export default function RegisterPage() {
 
     const {
       data: { publicUrl },
-    } = supabase.storage.from("avatars").getPublicUrl(filePath);
+    } = supabase.storage.from("avatar").getPublicUrl(filePath);
 
     return publicUrl;
   }
@@ -365,14 +365,23 @@ if (
                         Din profil
                       </p>
 
+                      <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-400">
+                        Forhåndsvisning
+                      </p>
+
                       <h2 className="mt-2 font-serif text-3xl font-bold text-[#063f32]">
-                        {form.fullName || "Dit navn"}
+                        {form.fullName || "Dit navn vises her"}
                       </h2>
 
                       <p className="mt-1 text-[#0b5a47]">
                         {form.username
-                          ? `@${form.username}`
-                          : "Vælg et brugernavn"}
+                          ? form.username
+                          : "Dit brugernavn vises her"}
+                      </p>
+
+                      <p className="mt-3 max-w-md text-sm leading-6 text-stone-500">
+                        Udfyld navn og brugernavn i felterne under
+                        Kontooplysninger.
                       </p>
 
                       <button
@@ -394,7 +403,7 @@ if (
 
               <FormSection title="Kontooplysninger">
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <FormField label="Fulde navn" required>
+                  <FormField label="Dit fulde navn" required>
                     <input
                       required
                       type="text"
@@ -407,11 +416,9 @@ if (
                     />
                   </FormField>
 
-                  <FormField label="Brugernavn" required>
+                  <FormField label="Vælg dit brugernavn" required>
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-stone-400">
-                        @
-                      </span>
+                      
 
                       <input
                         required
@@ -421,7 +428,7 @@ if (
                         onChange={(event) =>
                           updateField("username", event.target.value)
                         }
-                        className={`${inputClassName} pl-9`}
+                        className={inputClassName}
                       />
                     </div>
                   </FormField>

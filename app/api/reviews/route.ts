@@ -37,10 +37,6 @@ export async function POST(
     const accessToken =
       authorization.slice("Bearer ".length);
 
-    /*
-     * Supabase-klient med den aktuelle brugers token.
-     * Det betyder, at RLS og auth.uid() fortsat virker.
-     */
     const supabaseUser = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -133,13 +129,6 @@ export async function POST(
       );
     }
 
-    /*
-     * Hent ordren først, så vi kan kontrollere:
-     * - at den findes
-     * - at brugeren er køber eller sælger
-     * - at ordren er afsluttet
-     * - hvem anmeldelsen skal handle om
-     */
     const {
       data: order,
       error: orderError,
@@ -321,6 +310,48 @@ export async function POST(
       );
     }
 
+    /*
+     * Anmeldelsen er nu gemt. Opret en notifikation til den bruger,
+     * der netop er blevet anmeldt.
+     *
+     * Notifikationen er bevidst "best effort": en fejl her må ikke
+     * få en allerede gemt anmeldelse til at se ud som om den fejlede.
+     */
+    const reviewerName =
+      getReviewerDisplayName(user);
+
+    const notificationTitle =
+      "Du har fået en ny anmeldelse";
+
+    const notificationMessage =
+      rating === 1
+        ? `${reviewerName} har givet dig 1 stjerne.`
+        : `${reviewerName} har givet dig ${rating} stjerner.`;
+
+    const notificationHref = isBuyer
+      ? `/profile/${encodeURIComponent(
+          String(user.user_metadata?.username || user.id)
+        )}`
+      : "/mine-ordrer";
+
+    const { error: notificationError } =
+      await supabaseUser
+        .from("notifications")
+        .insert({
+          user_id: reviewedUserId,
+          notification_type: "review_received",
+          title: notificationTitle,
+          message: notificationMessage,
+          href: notificationHref,
+        });
+
+    if (notificationError) {
+      console.error(
+        "Anmeldelsen blev gemt, men notifikationen kunne ikke oprettes:",
+        notificationError
+      );
+    }
+
     return NextResponse.json(
       {
         message:
@@ -347,6 +378,32 @@ export async function POST(
       }
     );
   }
+}
+
+function getReviewerDisplayName(
+  user: {
+    email?: string | null;
+    user_metadata?: Record<string, unknown>;
+  }
+) {
+  const metadata = user.user_metadata ?? {};
+
+  const candidates = [
+    metadata.full_name,
+    metadata.name,
+    metadata.username,
+  ];
+
+  for (const candidate of candidates) {
+    if (
+      typeof candidate === "string" &&
+      candidate.trim()
+    ) {
+      return candidate.trim();
+    }
+  }
+
+  return "En bruger";
 }
 
 function isValidUuid(

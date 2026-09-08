@@ -788,7 +788,7 @@ export default function ProfilePage() {
 
                       <p className="mt-1 text-[#0b5a47]">
                         {form.username
-                          ? `@${form.username}`
+                          ? form.username
                           : "Vælg et brugernavn"}
                       </p>
 
@@ -1047,9 +1047,7 @@ export default function ProfilePage() {
                     required
                   >
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-stone-400">
-                        @
-                      </span>
+                      
 
                       <input
                         required
@@ -1062,7 +1060,7 @@ export default function ProfilePage() {
                             event.target.value
                           )
                         }
-                        className={`${inputClassName} pl-9`}
+                        className={inputClassName}
                       />
                     </div>
                   </FormField>
