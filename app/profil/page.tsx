@@ -436,7 +436,7 @@ export default function ProfilePage() {
       const filePath = `${userId}/avatar-${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("avatars")
+        .from("avatar")
         .upload(filePath, avatarFile, {
           cacheControl: "3600",
           upsert: false,
@@ -450,7 +450,7 @@ export default function ProfilePage() {
       const {
         data: { publicUrl },
       } = supabase.storage
-        .from("avatars")
+        .from("avatar")
         .getPublicUrl(filePath);
 
       return publicUrl;
