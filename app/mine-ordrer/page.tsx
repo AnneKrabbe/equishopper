@@ -65,6 +65,7 @@ type OrderRow = {
   shipped_at: string | null;
   ready_for_pickup_at: string | null;
   buyer_confirmed_at: string | null;
+  pickup_received_at: string | null;
   completed_at: string | null;
   payout_status: string | null;
   stripe_transfer_id: string | null;
@@ -221,6 +222,7 @@ export default function MyOrdersPage() {
             shipped_at,
             ready_for_pickup_at,
             buyer_confirmed_at,
+            pickup_received_at,
             completed_at,
             payout_status,
             stripe_transfer_id
@@ -724,9 +726,14 @@ const response = await fetch("/api/reviews", {
                       !order.stripe_transfer_id &&
                       effectiveStatus !== "pending" &&
                       effectiveStatus !== "cancelled";
+                    const pickupAlreadyConfirmed =
+                      order.shipping_method === "pickup" &&
+                      Boolean(order.pickup_received_at);
+
                     const canConfirmPickup =
                       order.shipping_method === "pickup" &&
-                      effectiveStatus === "ready_for_pickup";
+                      effectiveStatus === "ready_for_pickup" &&
+                      !pickupAlreadyConfirmed;
                     const existingReview =
                       reviewsByOrderId[order.id];
                     const canReview =
@@ -855,6 +862,41 @@ const response = await fetch("/api/reviews", {
                             order={order}
                             status={effectiveStatus}
                           />
+
+                          {order.shipping_method === "shipping" &&
+                            order.shipping_carrier?.toLowerCase() === "dao" &&
+                            order.tracking_number && (
+                              <div className="mt-5 rounded-2xl border border-[#d4af37]/40 bg-[#fffaf0] p-5">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white text-[#0b5a47] shadow-sm">
+                                      <Truck className="h-5 w-5" />
+                                    </div>
+
+                                    <div>
+                                      <p className="font-semibold text-[#063f32]">
+                                        Track & Trace
+                                      </p>
+                                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                                        Følg din pakke direkte hos DAO. Din DAO-fragtkode
+                                        indsættes automatisk.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <a
+                                    href={getDaoTrackingUrl(order.tracking_number)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex flex-none items-center justify-center gap-2 rounded-full bg-[#063f32] px-6 py-3 font-semibold text-white transition hover:bg-[#0b5a47]"
+                                  >
+                                    <Truck className="h-4 w-4" />
+                                    Spor pakken hos DAO
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                </div>
+                              </div>
+                            )}
 
                           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <button
@@ -1001,9 +1043,10 @@ const response = await fetch("/api/reviews", {
                 </h2>
 
                 <p className="mt-3 text-sm leading-6 text-stone-600">
-                  Når du bekræfter, afsluttes handlen, og betalingen
-                  frigives til sælger. Bekræft derfor kun, når du har
-                  modtaget varen og kontrolleret, at alt er som aftalt.
+                  Når du bekræfter, registrerer vi, at du har modtaget
+                  varen. Betalingen frigives til sælger, så snart udbetalingen
+                  kan gennemføres. Bekræft derfor kun, når du har modtaget
+                  varen og kontrolleret, at alt er som aftalt.
                 </p>
               </div>
             </div>
@@ -1034,8 +1077,8 @@ const response = await fetch("/api/reviews", {
                   <PackageCheck className="h-4 w-4" />
                 )}
                 {confirmingOrderId === pickupConfirmOrder.id
-                  ? "Frigiver betaling..."
-                  : "Ja, frigiv betaling"}
+                  ? "Bekræfter..."
+                  : "Ja, jeg har hentet varen"}
               </button>
             </div>
           </div>
@@ -1519,6 +1562,26 @@ function StatusExplanation({
   order: OrderView;
   status: FulfillmentStatus;
 }) {
+  if (
+    order.shipping_method === "pickup" &&
+    order.pickup_received_at &&
+    order.payout_status !== "paid" &&
+    !order.stripe_transfer_id
+  ) {
+    return (
+      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none" />
+        <div>
+          <p className="font-semibold">Afhentning bekræftet</p>
+          <p className="mt-1">
+            Din bekræftelse er registreret. Udbetalingen sker automatisk,
+            når sælgerens udbetaling er klar. Du skal ikke bekræfte igen.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const content: Record<
     FulfillmentStatus,
     {
@@ -1693,10 +1756,8 @@ function getStatusLabel(status: FulfillmentStatus) {
 function getDaoTrackingUrl(trackingNumber: string) {
   const trackingCode = trackingNumber.trim();
 
-  // DAO's officielle Track & Trace-side.
-  // Koden vises fortsat på Equishopper, så brugeren kan indsætte den hos DAO,
-  // hvis DAO ikke understøtter direkte prefill via URL'en.
-  return `https://dao.as/find-din-pakke/`;
+  // DAO's officielle Track & Trace-side med fragtkoden forudfyldt.
+  return `https://dao.as/find-din-pakke/#q=${encodeURIComponent(trackingCode)}`;
 }
 
 function getSellerDisplayName(profile: SellerProfileRow) {

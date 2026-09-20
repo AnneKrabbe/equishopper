@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!profile.stripe_account_id) {
       return NextResponse.json(
         {
-          error: "Du skal først forbinde din Stripe-konto.",
+          error: "Du skal først aktivere udbetaling.",
           needsOnboarding: true,
         },
         { status: 409 },
@@ -50,27 +50,33 @@ export async function POST(request: NextRequest) {
       );
 
       if ("deleted" in account && account.deleted) {
-        await clearStripeConnection(user.id);
-
+        /*
+         * Vigtigt: Dashboard-routen nulstiller IKKE stripe_account_id.
+         * Onboarding-routen ejer udskiftning af en gammel/slettet konto,
+         * så den samtidig kan migrere åbne payout-referencer sikkert.
+         */
         return NextResponse.json(
           {
-            error: "Din Stripe-konto skal forbindes igen.",
+            error: "Din Stripe-forbindelse skal aktiveres igen.",
             needsOnboarding: true,
-            connectionReset: true,
+            connectionReset: false,
           },
           { status: 409 },
         );
       }
     } catch (error) {
       if (isMissingOrInaccessibleStripeAccount(error)) {
-        await clearStripeConnection(user.id);
-
+        /*
+         * Bevar den gamle konto-reference her. Når brugeren starter
+         * onboarding igen, kan onboard-routen se den gamle ID og opdatere
+         * åbne ordrer til den nye konto.
+         */
         return NextResponse.json(
           {
             error:
-              "Din tidligere Stripe-forbindelse kan ikke bruges i det aktive live-miljø.",
+              "Din tidligere Stripe-forbindelse kan ikke bruges længere. Aktivér udbetaling igen.",
             needsOnboarding: true,
-            connectionReset: true,
+            connectionReset: false,
           },
           { status: 409 },
         );
@@ -136,27 +142,6 @@ async function getAuthenticatedUser(request: NextRequest) {
   }
 
   return user;
-}
-
-async function clearStripeConnection(profileId: string) {
-  const { error } = await supabaseAdmin
-    .from("profiles")
-    .update({
-      stripe_account_id: null,
-      stripe_details_submitted: false,
-      stripe_charges_enabled: false,
-      stripe_payouts_enabled: false,
-      stripe_onboarding_completed_at: null,
-      stripe_account_updated_at: new Date().toISOString(),
-    })
-    .eq("id", profileId);
-
-  if (error) {
-    console.error("Kunne ikke nulstille Stripe-forbindelsen:", error);
-    throw new Error(
-      "Din gamle Stripe-forbindelse blev fundet, men kunne ikke nulstilles. Prøv igen.",
-    );
-  }
 }
 
 function isMissingOrInaccessibleStripeAccount(error: unknown) {

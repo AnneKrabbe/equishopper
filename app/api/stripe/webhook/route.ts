@@ -35,6 +35,9 @@ type ProfileRow = {
   id: string;
   full_name: string | null;
   username: string | null;
+  stripe_account_id: string | null;
+  stripe_details_submitted: boolean | null;
+  stripe_payouts_enabled: boolean | null;
 };
 
 type ListingImageRow = {
@@ -379,7 +382,10 @@ async function sendPaidOrderEmails(
     .select(`
       id,
       full_name,
-      username
+      username,
+      stripe_account_id,
+      stripe_details_submitted,
+      stripe_payouts_enabled
     `)
     .in("id", [
       order.buyer_id,
@@ -411,6 +417,20 @@ async function sendPaidOrderEmails(
 
   const sellerName =
     getDisplayName(sellerProfile);
+
+  const sellerStripeReady = Boolean(
+    sellerProfile?.stripe_account_id &&
+      sellerProfile?.stripe_details_submitted &&
+      sellerProfile?.stripe_payouts_enabled,
+  );
+
+  const payoutSetupRequired = !sellerStripeReady;
+  const payoutSetupUrl =
+    `${siteUrl}/profil?setup=payout&order=${encodeURIComponent(order.id)}`;
+
+  if (payoutSetupRequired) {
+    await ensureSellerPayoutSetupNotification(order);
+  }
 
   const [
     { data: buyerAuthData, error: buyerAuthError },
@@ -526,6 +546,10 @@ async function sendPaidOrderEmails(
                 currency,
               ),
               orderUrl: sellerOrderUrl,
+              payoutSetupRequired,
+              payoutSetupUrl: payoutSetupRequired
+                ? payoutSetupUrl
+                : null,
             },
           })
         : Promise.resolve(null),
@@ -562,6 +586,32 @@ async function sendPaidOrderEmails(
     );
   }
 
+  if (
+    payoutSetupRequired &&
+    sellerEmail &&
+    sellerResult.status === "fulfilled"
+  ) {
+    const { error: reminderUpdateError } =
+      await supabaseAdmin
+        .from("orders")
+        .update({
+          seller_payout_setup_reminder_sent_at:
+            new Date().toISOString(),
+        })
+        .eq("id", order.id)
+        .is("seller_payout_setup_reminder_sent_at", null);
+
+    if (reminderUpdateError) {
+      console.error(
+        "Kunne ikke registrere udbetalingspåmindelsen:",
+        {
+          orderId: order.id,
+          error: reminderUpdateError,
+        },
+      );
+    }
+  }
+
   if (!buyerEmail) {
     console.warn(
       "Køber har ingen e-mail i Supabase Auth:",
@@ -578,6 +628,55 @@ async function sendPaidOrderEmails(
       {
         orderId: order.id,
         sellerId: order.seller_id,
+      },
+    );
+  }
+}
+
+async function ensureSellerPayoutSetupNotification(
+  order: PaidOrderRow,
+) {
+  try {
+    const { data: existingNotification, error: lookupError } =
+      await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", order.seller_id)
+        .eq("order_id", order.id)
+        .eq("notification_type", "order_completed")
+        .eq("title", "Aktivér udbetaling")
+        .maybeSingle();
+
+    if (lookupError) {
+      throw lookupError;
+    }
+
+    if (existingNotification) {
+      return;
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from("notifications")
+      .insert({
+        user_id: order.seller_id,
+        order_id: order.id,
+        notification_type: "order_completed",
+        title: "Aktivér udbetaling",
+        message:
+          "Du har solgt en vare 🎉 Aktivér udbetaling for at modtage dine penge.",
+        href: `/profil?setup=payout&order=${encodeURIComponent(order.id)}`,
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  } catch (error) {
+    console.error(
+      "Udbetalingsnotifikation kunne ikke oprettes:",
+      {
+        orderId: order.id,
+        sellerId: order.seller_id,
+        error,
       },
     );
   }

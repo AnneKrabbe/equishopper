@@ -47,6 +47,7 @@ type SuccessResponse = {
   alreadyCompleted: boolean;
   transferId: string | null;
   completedWithoutTransfer: boolean;
+  waitingForSellerStripe?: boolean;
   message: string;
   order?: PreparedOrder | null;
 };
@@ -75,6 +76,86 @@ export async function POST(
         { error: "Du skal være logget ind." },
         { status: 401 },
       );
+    }
+
+    /*
+     * Gem køberens afhentningsbekræftelse med det samme.
+     * Den må ikke gå tabt, hvis sælgeren endnu ikke har aktiveret udbetaling.
+     */
+    const { data: pickupOrder, error: pickupOrderError } =
+      await supabaseAdmin
+        .from("orders")
+        .select(`
+          id,
+          buyer_id,
+          payment_status,
+          shipping_method,
+          pickup_received_at
+        `)
+        .eq("id", orderId)
+        .eq("buyer_id", user.id)
+        .single();
+
+    if (pickupOrderError || !pickupOrder) {
+      throw new Error(
+        pickupOrderError?.message || "Ordren kunne ikke hentes.",
+      );
+    }
+
+    if (pickupOrder.payment_status !== "paid") {
+      throw new Error("Ordren er ikke betalt.");
+    }
+
+    if (pickupOrder.shipping_method !== "pickup") {
+      throw new Error(
+        "Denne handling kan kun bruges til afhentningsordrer.",
+      );
+    }
+
+    if (!pickupOrder.pickup_received_at) {
+      const { error: pickupReceivedError } =
+        await supabaseAdmin
+          .from("orders")
+          .update({
+            pickup_received_at: new Date().toISOString(),
+            payout_error: null,
+          })
+          .eq("id", orderId)
+          .eq("buyer_id", user.id)
+          .is("pickup_received_at", null);
+
+      if (pickupReceivedError) {
+        throw new Error(
+          `Afhentningen kunne ikke registreres: ${pickupReceivedError.message}`,
+        );
+      }
+    }
+
+    /*
+     * Afhentning må gerne være solgt, før sælgeren har færdiggjort
+     * Stripe-onboarding. Synkronisér derfor sælgerens aktuelle Stripe-konto
+     * til ordren, før payout-RPC'en kaldes.
+     *
+     * Hvis sælgeren endnu ikke er klar til udbetaling, afslutter vi ikke
+     * ordren og forsøger ikke en Stripe-transfer. Køberen får i stedet et
+     * roligt svar om, at varen er registreret som modtaget, mens udbetalingen
+     * afventer sælgerens opsætning.
+     */
+    const stripeState = await syncSellerStripeAccountForPickupPayout({
+      orderId,
+      buyerId: user.id,
+    });
+
+    if (!stripeState.ready) {
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: false,
+        transferId: null,
+        completedWithoutTransfer: false,
+        waitingForSellerStripe: true,
+        message:
+          "Varen er registreret som modtaget. Sælgeren skal aktivere udbetaling, før pengene kan overføres.",
+      });
     }
 
     const { data: preparedData, error: prepareError } =
@@ -310,6 +391,126 @@ export async function POST(
       },
     );
   }
+}
+
+async function syncSellerStripeAccountForPickupPayout({
+  orderId,
+  buyerId,
+}: {
+  orderId: string;
+  buyerId: string;
+}) {
+  const { data: order, error: orderError } = await supabaseAdmin
+    .from("orders")
+    .select(`
+      id,
+      buyer_id,
+      seller_id,
+      seller_payout_amount,
+      seller_stripe_account_id,
+      stripe_transfer_id,
+      payout_status,
+      payment_status,
+      shipping_method
+    `)
+    .eq("id", orderId)
+    .eq("buyer_id", buyerId)
+    .single();
+
+  if (orderError || !order) {
+    throw new Error(
+      orderError?.message || "Ordren kunne ikke hentes.",
+    );
+  }
+
+  if (order.payment_status !== "paid") {
+    throw new Error("Ordren er ikke betalt.");
+  }
+
+  if (order.shipping_method !== "pickup") {
+    throw new Error(
+      "Denne handling kan kun bruges til afhentningsordrer.",
+    );
+  }
+
+  if (order.payout_status === "paid" || order.stripe_transfer_id) {
+    return { ready: true as const };
+  }
+
+  const sellerPayoutAmount = toIntegerAmount(
+    order.seller_payout_amount,
+  );
+
+  if (sellerPayoutAmount === null || sellerPayoutAmount < 0) {
+    throw new Error(
+      "Ordren mangler et gyldigt udbetalingsbeløb.",
+    );
+  }
+
+  if (sellerPayoutAmount === 0) {
+    return { ready: true as const };
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select(`
+      stripe_account_id,
+      stripe_details_submitted,
+      stripe_payouts_enabled
+    `)
+    .eq("id", order.seller_id)
+    .single();
+
+  if (profileError || !profile) {
+    throw new Error(
+      profileError?.message ||
+        "Sælgerens udbetalingsstatus kunne ikke hentes.",
+    );
+  }
+
+  const stripeReady = Boolean(
+    profile.stripe_account_id &&
+      profile.stripe_details_submitted &&
+      profile.stripe_payouts_enabled,
+  );
+
+  if (!stripeReady) {
+    /*
+     * Dette er ikke en teknisk payout-fejl. Ordren skal blot vente,
+     * indtil sælgeren har aktiveret udbetaling.
+     */
+    await supabaseAdmin
+      .from("orders")
+      .update({ payout_error: null })
+      .eq("id", orderId)
+      .neq("payout_status", "paid")
+      .is("stripe_transfer_id", null);
+
+    return {
+      ready: false as const,
+      reason: "waiting_for_seller_stripe",
+    };
+  }
+
+  if (order.seller_stripe_account_id !== profile.stripe_account_id) {
+    const { error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        seller_stripe_account_id: profile.stripe_account_id,
+        payout_error: null,
+      })
+      .eq("id", orderId)
+      .neq("payout_status", "paid")
+      .is("stripe_transfer_id", null);
+
+    if (updateError) {
+      throw new Error(
+        `Sælgerens Stripe-konto kunne ikke gemmes på ordren: ${updateError.message}`,
+      );
+    }
+  }
+
+  return { ready: true as const };
 }
 
 async function sendPaymentReleasedEmails(order: PreparedOrder) {

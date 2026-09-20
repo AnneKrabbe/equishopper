@@ -51,6 +51,19 @@ type ProfileData = {
 };
 
 type DawaAddress = {
+  id?: string;
+  tekst?: string;
+  adresse?: {
+    id?: string;
+    vejnavn?: string;
+    husnr?: string;
+    etage?: string | null;
+    dør?: string | null;
+    postnr?: string;
+    postnrnavn?: string;
+    x?: number;
+    y?: number;
+  };
   x?: number;
   y?: number;
   postnr?: string;
@@ -87,6 +100,9 @@ export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [payoutSetupRequested, setPayoutSetupRequested] = useState(false);
+  const [payoutOrderId, setPayoutOrderId] = useState<string | null>(null);
+
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [emailVerified, setEmailVerified] = useState(false);
@@ -104,6 +120,9 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [locationFound, setLocationFound] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<DawaAddress[]>([]);
+  const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
 
   const [notifications, setNotifications] = useState<ProfileNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
@@ -373,6 +392,80 @@ export default function ProfilePage() {
     ) {
       setLocationFound(false);
     }
+  }
+
+  useEffect(() => {
+    const query = form.address.trim();
+
+    if (!showAddressSuggestions || query.length < 3) {
+      setAddressSuggestions([]);
+      setAddressSuggestionsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setAddressSuggestionsLoading(true);
+
+        const response = await fetch(
+          `https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(
+            query
+          )}&type=adresse&caretpos=${query.length}&fuzzy=`,
+          { signal: controller.signal }
+        );
+
+        if (!response.ok) {
+          throw new Error("Adresseforslag kunne ikke hentes.");
+        }
+
+        const results = (await response.json()) as DawaAddress[];
+        setAddressSuggestions(results.slice(0, 6));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Kunne ikke hente adresseforslag:", error);
+        setAddressSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setAddressSuggestionsLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.address, showAddressSuggestions]);
+
+  function selectAddressSuggestion(suggestion: DawaAddress) {
+    const address = suggestion.adresse;
+    if (!address) return;
+
+    const streetAddress = [
+      [address.vejnavn, address.husnr].filter(Boolean).join(" "),
+      address.etage || "",
+      address.dør || "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    setForm((current) => ({
+      ...current,
+      address: streetAddress || suggestion.tekst || current.address,
+      postalCode: address.postnr ?? current.postalCode,
+      city: address.postnrnavn ?? current.city,
+    }));
+
+    setLocationFound(
+      typeof address.y === "number" && typeof address.x === "number"
+    );
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
+    setSuccessMessage("");
   }
 
   function handleAvatarSelection(
@@ -668,6 +761,26 @@ export default function ProfilePage() {
       }).format(new Date(profile.created_at))
     : "—";
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setPayoutSetupRequested(params.get("setup") === "payout");
+    setPayoutOrderId(params.get("order"));
+  }, []);
+
+  useEffect(() => {
+    if (loading || !payoutSetupRequested) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById("udbetaling")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, payoutSetupRequested]);
+
   const unreadNotifications = notifications.filter(
     (notification) => !notification.read_at
   );
@@ -908,15 +1021,68 @@ export default function ProfilePage() {
                 </div>
               </section>
 
-              <StripeConnectCard
-                connected={Boolean(profile?.stripe_account_id)}
-                detailsSubmitted={
-                  profile?.stripe_details_submitted ?? false
-                }
-                payoutsEnabled={
-                  profile?.stripe_payouts_enabled ?? false
-                }
-              />
+              <section
+                id="udbetaling"
+                className={`scroll-mt-32 rounded-[30px] ${
+                  payoutSetupRequested &&
+                  !(
+                    profile?.stripe_details_submitted &&
+                    profile?.stripe_payouts_enabled
+                  )
+                    ? "ring-4 ring-[#d4af37]/35"
+                    : ""
+                }`}
+              >
+                {payoutSetupRequested &&
+                  !(
+                    profile?.stripe_details_submitted &&
+                    profile?.stripe_payouts_enabled
+                  ) && (
+                    <div className="mb-4 rounded-[24px] border border-[#d4af37]/50 bg-[#fff9e8] p-5 sm:p-6">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a6a00]">
+                        Din vare er solgt
+                      </p>
+                      <h2 className="mt-2 font-serif text-2xl font-bold text-[#063f32]">
+                        Aktivér udbetaling
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+                        Før pengene fra dit salg kan overføres til dig, skal
+                        din udbetaling aktiveres hos Stripe, Equishoppers
+                        sikre betalingspartner.
+                      </p>
+                      {payoutOrderId && (
+                        <p className="mt-2 text-xs text-stone-500">
+                          Din ordre er allerede registreret. Du skal kun
+                          færdiggøre udbetalingsopsætningen nedenfor.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                {payoutSetupRequested &&
+                  profile?.stripe_details_submitted &&
+                  profile?.stripe_payouts_enabled && (
+                    <div className="mb-4 rounded-[24px] border border-[#cbdccb] bg-[#f0f6f1] p-5 sm:p-6">
+                      <p className="font-semibold text-[#063f32]">
+                        Udbetaling er klar ✓
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                        Din Stripe-opsætning er færdig. Eventuelle ventende
+                        udbetalinger behandles automatisk.
+                      </p>
+                    </div>
+                  )}
+
+                <StripeConnectCard
+                  connected={Boolean(profile?.stripe_account_id)}
+                  detailsSubmitted={
+                    profile?.stripe_details_submitted ?? false
+                  }
+                  payoutsEnabled={
+                    profile?.stripe_payouts_enabled ?? false
+                  }
+                />
+              </section>
 
               <section className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.06)] sm:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1113,20 +1279,77 @@ export default function ProfilePage() {
                       required
                       className="sm:col-span-2"
                     >
-                      <input
-                        required
-                        type="text"
-                        autoComplete="street-address"
-                        value={form.address}
-                        onChange={(event) =>
-                          updateField(
-                            "address",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Ridevej 12"
-                        className={inputClassName}
-                      />
+                      <div className="relative">
+                        <input
+                          required
+                          type="text"
+                          autoComplete="off"
+                          value={form.address}
+                          onFocus={() => setShowAddressSuggestions(true)}
+                          onChange={(event) => {
+                            updateField("address", event.target.value);
+                            setShowAddressSuggestions(true);
+                          }}
+                          onBlur={() => {
+                            window.setTimeout(
+                              () => setShowAddressSuggestions(false),
+                              150
+                            );
+                          }}
+                          placeholder="Begynd at skrive din adresse"
+                          className={inputClassName}
+                          aria-autocomplete="list"
+                          aria-expanded={showAddressSuggestions}
+                        />
+
+                        {showAddressSuggestions &&
+                          form.address.trim().length >= 3 && (
+                            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                              {addressSuggestionsLoading ? (
+                                <div className="px-4 py-3 text-sm text-stone-500">
+                                  Henter adresseforslag...
+                                </div>
+                              ) : addressSuggestions.length > 0 ? (
+                                <div role="listbox">
+                                  {addressSuggestions.map(
+                                    (suggestion, index) => (
+                                      <button
+                                        key={
+                                          suggestion.id ??
+                                          suggestion.adresse?.id ??
+                                          `${suggestion.tekst}-${index}`
+                                        }
+                                        type="button"
+                                        role="option"
+                                        onMouseDown={(event) =>
+                                          event.preventDefault()
+                                        }
+                                        onClick={() =>
+                                          selectAddressSuggestion(suggestion)
+                                        }
+                                        className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
+                                      >
+                                        {suggestion.tekst ??
+                                          [
+                                            suggestion.adresse?.vejnavn,
+                                            suggestion.adresse?.husnr,
+                                            suggestion.adresse?.postnr,
+                                            suggestion.adresse?.postnrnavn,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" ")}
+                                      </button>
+                                    )
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="px-4 py-3 text-sm text-stone-500">
+                                  Ingen adresser fundet.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                      </div>
                     </FormField>
 
                     <FormField

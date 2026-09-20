@@ -63,14 +63,8 @@ export async function POST(request: NextRequest) {
           account = existingAccount;
         }
       } catch (error) {
-        /*
-         * Dette er vigtigt ved skift fra Stripe test/sandbox til live.
-         * Et acct_... fra testmiljøet findes ikke under live API-nøglen.
-         * I den situation opretter vi en ny live Express-konto i stedet
-         * for at låse sælgeren fast på den gamle testkonto.
-         */
-        if (!isMissingStripeResourceError(error)) {
-          throw error;
+        if (!isMissingOrInaccessibleStripeAccount(error)) {
+          throw sanitizeStripeError(error);
         }
 
         replacedMissingAccount = true;
@@ -91,17 +85,20 @@ export async function POST(request: NextRequest) {
     await saveStripeStatus(user.id, account);
 
     /*
-     * Hvis den gamle konto var fra et andet Stripe-miljø, kan allerede
-     * oprettede ordrer stadig pege på det gamle acct_....
-     * Opdater kun ordrer for denne sælger, som stadig peger præcis på
-     * den gamle konto, og som endnu ikke har fået en Stripe-transfer.
+     * Hvis en gammel/slettet/test-konto er blevet erstattet, flyttes kun
+     * åbne payout-referencer. Ordrer, der allerede har en transfer, røres
+     * aldrig.
+     *
+     * Ordrer uden seller_stripe_account_id behøver ikke blive udfyldt her:
+     * payout-flowet synkroniserer dem fra sælgerens aktuelle profil, når
+     * udbetalingen bliver klar.
      */
     if (
       replacedMissingAccount &&
       previousStripeAccountId &&
       previousStripeAccountId !== account.id
     ) {
-      await replaceStripeAccountOnUnpaidPayoutOrders({
+      await replaceStripeAccountOnOpenPayoutOrders({
         sellerId: user.id,
         oldStripeAccountId: previousStripeAccountId,
         newStripeAccountId: account.id,
@@ -109,13 +106,15 @@ export async function POST(request: NextRequest) {
     }
 
     const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      request.nextUrl.origin;
 
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
       type: "account_onboarding",
-      refresh_url: `${appUrl}/stripe/connect/refresh`,
-      return_url: `${appUrl}/stripe/connect/return`,
+      refresh_url: `${appUrl.replace(/\/$/, "")}/stripe/connect/refresh`,
+      return_url: `${appUrl.replace(/\/$/, "")}/stripe/connect/return`,
     });
 
     return NextResponse.json({
@@ -172,7 +171,7 @@ async function createExpressAccount({
   });
 }
 
-async function replaceStripeAccountOnUnpaidPayoutOrders({
+async function replaceStripeAccountOnOpenPayoutOrders({
   sellerId,
   oldStripeAccountId,
   newStripeAccountId,
@@ -185,14 +184,16 @@ async function replaceStripeAccountOnUnpaidPayoutOrders({
     .from("orders")
     .update({
       seller_stripe_account_id: newStripeAccountId,
+      payout_error: null,
     })
     .eq("seller_id", sellerId)
     .eq("seller_stripe_account_id", oldStripeAccountId)
-    .is("stripe_transfer_id", null);
+    .is("stripe_transfer_id", null)
+    .neq("payout_status", "paid");
 
   if (error) {
     throw new Error(
-      "Din nye Stripe-konto blev oprettet, men åbne ordrer kunne ikke opdateres.",
+      "Din nye Stripe-konto blev oprettet, men åbne udbetalinger kunne ikke opdateres.",
     );
   }
 }
@@ -260,9 +261,28 @@ async function saveStripeStatus(
   }
 }
 
-function isMissingStripeResourceError(error: unknown) {
+function isMissingOrInaccessibleStripeAccount(error: unknown) {
+  if (!(error instanceof Stripe.errors.StripeError)) {
+    return false;
+  }
+
+  const message = (error.message ?? "").toLowerCase();
+
   return (
-    error instanceof Stripe.errors.StripeInvalidRequestError &&
-    error.code === "resource_missing"
+    error.code === "resource_missing" ||
+    message.includes("does not have access to account") ||
+    message.includes("account does not exist") ||
+    message.includes("application access may have been revoked") ||
+    message.includes("no such account")
   );
+}
+
+function sanitizeStripeError(error: unknown) {
+  if (error instanceof Stripe.errors.StripeError) {
+    return new Error(
+      "Stripe-kontoen kunne ikke forbindes lige nu. Prøv igen om et øjeblik.",
+    );
+  }
+
+  return error;
 }

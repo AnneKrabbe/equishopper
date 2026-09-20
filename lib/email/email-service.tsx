@@ -144,7 +144,9 @@ export async function sendItemSoldEmail({
 }) {
   return sendEmail({
     to,
-    subject: `Din vare er solgt: ${props.listingTitle}`,
+    subject: props.payoutSetupRequired
+      ? `Din vare er solgt – aktivér udbetaling: ${props.listingTitle}`
+      : `Din vare er solgt: ${props.listingTitle}`,
     react: <ItemSoldEmail {...props} />,
   });
 }

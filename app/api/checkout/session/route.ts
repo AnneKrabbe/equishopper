@@ -282,80 +282,10 @@ export async function POST(request: NextRequest) {
     }
 
     /*
-     * En annulleret/udløbet Stripe Checkout kan efterlade varen i kurven,
-     * mens reservationen er frigivet. Reservér derfor kurvens aktive varer
-     * igen til den aktuelle køber, før create_pending_order kaldes.
-     *
-     * Opdateringen er betinget af status = active, så vi ikke overtager en
-     * vare, der i mellemtiden er reserveret eller solgt til en anden.
+     * Reservation, validering og ordreoprettelse sker atomisk i
+     * create_pending_order. Databasen låser annoncerne, så to købere
+     * ikke kan reservere den samme vare samtidigt.
      */
-    const { data: cartRows, error: cartReadError } =
-      await supabaseAdmin
-        .from("cart_items")
-        .select("listing_id")
-        .eq("user_id", user.id);
-
-    if (cartReadError) {
-      throw new Error("Kurven kunne ikke kontrolleres.");
-    }
-
-    const cartListingIds = Array.from(
-      new Set(
-        (cartRows ?? [])
-          .map((row) => row.listing_id)
-          .filter(
-            (listingId): listingId is string =>
-              typeof listingId === "string" && listingId.length > 0,
-          ),
-      ),
-    );
-
-    if (cartListingIds.length === 0) {
-      throw new Error("Din kurv er tom.");
-    }
-
-    const reservationTime = new Date().toISOString();
-
-    const { error: reserveError } = await supabaseAdmin
-      .from("listings")
-      .update({
-        status: "reserved",
-        reserved_by: user.id,
-        reserved_at: reservationTime,
-      })
-      .in("id", cartListingIds)
-      .eq("status", "active");
-
-    if (reserveError) {
-      throw new Error("Varen kunne ikke reserveres igen.");
-    }
-
-    const { data: reservationRows, error: reservationReadError } =
-      await supabaseAdmin
-        .from("listings")
-        .select("id, status, reserved_by, reserved_at")
-        .in("id", cartListingIds);
-
-    if (reservationReadError) {
-      throw new Error("Reservationen kunne ikke kontrolleres.");
-    }
-
-    const reservationIsValid =
-      (reservationRows ?? []).length === cartListingIds.length &&
-      (reservationRows ?? []).every(
-        (listing) =>
-          listing.status?.toLowerCase() === "reserved" &&
-          listing.reserved_by === user.id &&
-          typeof listing.reserved_at === "string" &&
-          new Date(listing.reserved_at).getTime() >
-            Date.now() - 30 * 60 * 1000,
-      );
-
-    if (!reservationIsValid) {
-      throw new Error(
-        "En eller flere varer er ikke længere tilgængelige. Fjern dem fra kurven og prøv igen.",
-      );
-    }
 
     /*
      * Opret den reserverede ordre gennem databasefunktionen.
@@ -597,8 +527,13 @@ export async function POST(request: NextRequest) {
     }
 
     /*
-     * Kontrollér, at sælgeren har gennemført
-     * Stripe Connect-onboarding.
+     * Hent sælgerens Stripe-status, men blokér ikke købet hvis onboarding
+     * endnu ikke er færdig. Køberbetalingen sker på Equishoppers
+     * platformkonto, og transferen til sælger sker først senere.
+     *
+     * Hvis Stripe allerede er klar, fastlåser vi account-id'et på ordren.
+     * Hvis ikke, gemmes null, og payout-routen udfylder account-id'et,
+     * når sælgeren senere har aktiveret udbetaling.
      */
     const {
       data: sellerData,
@@ -615,22 +550,23 @@ export async function POST(request: NextRequest) {
 
     if (sellerError || !sellerData) {
       throw new Error(
-        "Sælgerens betalingskonto kunne ikke hentes."
+        "Sælgerens profil kunne ikke hentes."
       );
     }
 
     const seller =
       sellerData as SellerStripeRow;
 
-    if (
-      !seller.stripe_account_id ||
-      !seller.stripe_details_submitted ||
-      !seller.stripe_payouts_enabled
-    ) {
-      throw new Error(
-        "Sælgeren mangler at færdiggøre sin Stripe-konto, før varen kan købes."
-      );
-    }
+    const sellerStripeReady = Boolean(
+      seller.stripe_account_id &&
+      seller.stripe_details_submitted &&
+      seller.stripe_payouts_enabled
+    );
+
+    const sellerStripeAccountId =
+      sellerStripeReady
+        ? seller.stripe_account_id
+        : null;
 
     /*
      * Find gældende sælgergebyr.
@@ -708,7 +644,7 @@ export async function POST(request: NextRequest) {
       .from("orders")
       .update({
         seller_stripe_account_id:
-          seller.stripe_account_id,
+          sellerStripeAccountId,
 
         seller_fee_bps:
           sellerFeeBps,

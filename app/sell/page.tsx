@@ -682,18 +682,6 @@ function resetCategoryFields(newMainCategory: string) {
     event.preventDefault();
     setMessage("");
 
-    if (stripeLoading) {
-      setMessage("Din Stripe-status kontrolleres stadig. Vent et øjeblik.");
-      return;
-    }
-
-    if (!stripeReady) {
-      setMessage(
-        "Du skal forbinde og færdiggøre din Stripe-konto, før du kan oprette en annonce."
-      );
-      return;
-    }
-
     if (!subcategory) {
       setMessage("Vælg en underkategori.");
       return;
@@ -761,10 +749,7 @@ function resetCategoryFields(newMainCategory: string) {
           postal_code,
           city,
           latitude,
-          longitude,
-          stripe_account_id,
-          stripe_details_submitted,
-          stripe_payouts_enabled
+          longitude
         `)
         .eq("id", userData.user.id)
         .single();
@@ -772,20 +757,6 @@ function resetCategoryFields(newMainCategory: string) {
       if (profileError || !profile) {
         throw new Error(
           "Din profil kunne ikke hentes. Prøv at genindlæse siden."
-        );
-      }
-
-      const currentStripeReady = Boolean(
-        profile.stripe_account_id &&
-          profile.stripe_details_submitted &&
-          profile.stripe_payouts_enabled
-      );
-
-      if (!currentStripeReady) {
-        setStripeReady(false);
-
-        throw new Error(
-          "Du skal færdiggøre din Stripe-konto, før annoncen kan oprettes."
         );
       }
 
@@ -902,44 +873,6 @@ const { data: listing, error } = await supabase
             varen.
           </p>
 
-          {stripeLoading ? (
-            <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 text-sm text-stone-600 shadow-sm">
-              Kontrollerer din Stripe-konto...
-            </div>
-          ) : !stripeReady ? (
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <h2 className="font-semibold text-amber-900">
-                Forbind din Stripe-konto
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-800">
-                Du skal have en godkendt Stripe-konto, før du kan offentliggøre
-                en annonce. Stripe bruges til sikker udbetaling, når din vare
-                bliver solgt.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => void startStripeOnboarding()}
-                disabled={stripeOnboardingLoading}
-                className="mt-4 inline-flex items-center justify-center rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {stripeOnboardingLoading
-                  ? "Åbner Stripe..."
-                  : "Gå til Stripe-onboarding"}
-              </button>
-            </div>
-          ) : (
-            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <p className="font-semibold text-emerald-900">
-                Din Stripe-konto er klar til udbetaling
-              </p>
-
-              <p className="mt-1 text-sm leading-6 text-emerald-800">
-                Du kan nu oprette og offentliggøre annoncer.
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[1.12fr_0.88fr]">
@@ -972,7 +905,7 @@ const { data: listing, error } = await supabase
                         type="number"
                         value={price}
                         onChange={(event) => setPrice(event.target.value)}
-                        className="w-full rounded-2xl border border-[#ded4c2] bg-white px-4 py-[14px] text-[16px] text-[#063f32] outline-none transition placeholder:text-stone-400 focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15"
+                        className="w-full rounded-2xl border border-[#ded4c2] bg-white px-4 py-[14px] pr-16 text-[16px] text-[#063f32] outline-none transition placeholder:text-stone-400 focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         placeholder="Fx 16500"
                       />
 
@@ -1454,6 +1387,52 @@ const { data: listing, error } = await supabase
                   </div>
                 </div>
               )}
+
+              <div className="mt-7">
+                {stripeLoading ? (
+                  <div className="rounded-[24px] border border-stone-200 bg-white p-5 text-sm text-stone-600 shadow-sm md:p-6">
+                    Kontrollerer din udbetalingsopsætning...
+                  </div>
+                ) : !stripeReady ? (
+                  <div className="rounded-[24px] border border-[#eadfcb] bg-white p-5 shadow-sm md:p-6">
+                    <h3 className="font-serif text-2xl text-[#063f32]">
+                      Aktivér udbetaling nu – eller gør det senere
+                    </h3>
+
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+                      Det er valgfrit, om du vil sætte udbetaling op nu. Du kan
+                      oprette og offentliggøre din annonce uden. Hvis varen bliver
+                      solgt først, skal du aktivere udbetaling, før pengene kan
+                      overføres til dig.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => void startStripeOnboarding()}
+                      disabled={stripeOnboardingLoading}
+                      className="mt-4 inline-flex items-center justify-center rounded-full border border-[#d4af37] bg-[#fffdf8] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#f8f1d9] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {stripeOnboardingLoading
+                        ? "Åbner sikker udbetalingsopsætning..."
+                        : "Aktivér udbetaling nu"}
+                    </button>
+
+                    <p className="mt-3 text-xs leading-5 text-stone-500">
+                      Vil du hellere gøre det senere, fortsætter du bare og opretter
+                      annoncen nedenfor.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 md:p-6">
+                    <p className="font-semibold text-emerald-900">
+                      Udbetaling er klar ✓
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-emerald-800">
+                      Din udbetalingsopsætning er allerede færdig.
+                    </p>
+                  </div>
+                )}
+              </div>
             </section>
 
             {message && (
@@ -1467,9 +1446,7 @@ const { data: listing, error } = await supabase
   type="submit"
   disabled={
     isSubmitting ||
-    isProcessingImages ||
-    stripeLoading ||
-    !stripeReady
+    isProcessingImages
   }
   className="inline-flex w-full shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#063f32] px-9 py-4 font-medium text-white transition hover:bg-[#052f26] disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
 >
@@ -1478,11 +1455,7 @@ const { data: listing, error } = await supabase
                   ? "Opretter annonce..."
                   : isProcessingImages
                     ? "Klargør billeder..."
-                    : stripeLoading
-                    ? "Kontrollerer Stripe..."
-                    : !stripeReady
-                      ? "Stripe-konto mangler"
-                      : "Opret annonce"}
+                    : "Opret annonce"}
               </button>
 
               <p className="max-w-lg text-sm leading-6 text-stone-500">

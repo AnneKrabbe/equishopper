@@ -411,7 +411,102 @@ async function runPostPayoutNotifications(orderId: string) {
   await sendPayoutEmails(orderId);
 }
 
+async function syncSellerStripeAccountForPayout(id: string) {
+  const { data: order, error: orderError } = await supabaseAdmin
+    .from("orders")
+    .select("id, seller_id, seller_payout_amount, seller_stripe_account_id")
+    .eq("id", id)
+    .single();
+
+  if (orderError || !order) {
+    throw new Error(
+      orderError?.message || "Ordren kunne ikke hentes før udbetaling.",
+    );
+  }
+
+  const sellerPayoutAmount = Number(order.seller_payout_amount ?? 0);
+
+  // En ordre med 0 kr. til sælger kræver ingen Stripe-konto.
+  if (sellerPayoutAmount <= 0) {
+    return { ready: true as const };
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select(
+      "stripe_account_id, stripe_details_submitted, stripe_payouts_enabled",
+    )
+    .eq("id", order.seller_id)
+    .single();
+
+  if (profileError || !profile) {
+    throw new Error(
+      profileError?.message || "Sælgerens profil kunne ikke hentes.",
+    );
+  }
+
+  const stripeReady = Boolean(
+    profile.stripe_account_id &&
+      profile.stripe_details_submitted &&
+      profile.stripe_payouts_enabled,
+  );
+
+  if (!stripeReady) {
+    return {
+      ready: false as const,
+      reason: "waiting_for_seller_stripe",
+    };
+  }
+
+  /*
+   * Brug sælgerens aktuelle, færdiggjorte Stripe-konto.
+   * Det gør også ordren robust, hvis sælgerens acct_... senere
+   * er blevet erstattet.
+   */
+  if (order.seller_stripe_account_id !== profile.stripe_account_id) {
+    const { error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        seller_stripe_account_id: profile.stripe_account_id,
+        payout_error: null,
+      })
+      .eq("id", id)
+      .neq("payout_status", "paid")
+      .is("stripe_transfer_id", null);
+
+    if (updateError) {
+      throw new Error(
+        `Sælgerens Stripe-konto kunne ikke gemmes på ordren: ${updateError.message}`,
+      );
+    }
+  }
+
+  return { ready: true as const };
+}
+
 async function payout(id: string) {
+  /*
+   * Sælgeren må gerne have solgt varen, før Stripe-onboarding er færdig.
+   * Før prepare_order_auto_payout kaldes, synkroniserer vi derfor den
+   * aktuelle Stripe-konto fra profilen. Hvis sælgeren ikke er klar endnu,
+   * lader vi ordren vente og prøver igen ved en senere cron-kørsel.
+   */
+  const stripeState = await syncSellerStripeAccountForPayout(id);
+
+  if (!stripeState.ready) {
+    await supabaseAdmin
+      .from("orders")
+      .update({
+        payout_error: null,
+      })
+      .eq("id", id);
+
+    return {
+      id,
+      result: "waiting_for_seller_stripe",
+    };
+  }
+
   const { data: order, error } = await supabaseAdmin.rpc(
     "prepare_order_auto_payout",
     {
@@ -470,9 +565,9 @@ async function payout(id: string) {
       transfer_group: `ORDER_${id}`,
       metadata: {
         order_id: id,
-        payout_type: "automatic_delivery",
+        payout_type: "automatic_order_release",
       },
-      description: `Equishopper auto-udbetaling for ordre ${id}`,
+      description: `Equishopper udbetaling for ordre ${id}`,
     },
     {
       idempotencyKey: `equishopper-order-payout-${id}`,
@@ -514,26 +609,66 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("orders")
-      .select("id")
-      .eq("payment_status", "paid")
-      .not("shipping_delivered_at", "is", null)
-      .not("payout_due_at", "is", null)
-      .lte("payout_due_at", new Date().toISOString())
-      .neq("payout_status", "paid")
-      .order("payout_due_at", {
-        ascending: true,
-      })
-      .limit(25);
+    const nowIso = new Date().toISOString();
 
-    if (error) {
-      throw new Error(error.message);
+    const [shippingResult, pickupResult] = await Promise.all([
+      supabaseAdmin
+        .from("orders")
+        .select("id, payout_due_at")
+        .eq("payment_status", "paid")
+        .neq("shipping_method", "pickup")
+        .not("shipping_delivered_at", "is", null)
+        .not("payout_due_at", "is", null)
+        .lte("payout_due_at", nowIso)
+        .neq("payout_status", "paid")
+        .order("payout_due_at", {
+          ascending: true,
+        })
+        .limit(25),
+
+      supabaseAdmin
+        .from("orders")
+        .select("id, pickup_received_at")
+        .eq("payment_status", "paid")
+        .eq("shipping_method", "pickup")
+        .not("pickup_received_at", "is", null)
+        .neq("payout_status", "paid")
+        .order("pickup_received_at", {
+          ascending: true,
+        })
+        .limit(25),
+    ]);
+
+    if (shippingResult.error) {
+      throw new Error(shippingResult.error.message);
     }
+
+    if (pickupResult.error) {
+      throw new Error(pickupResult.error.message);
+    }
+
+    const candidateRows = [
+      ...(shippingResult.data ?? []).map((row) => ({
+        id: row.id,
+        readyAt: row.payout_due_at,
+      })),
+      ...(pickupResult.data ?? []).map((row) => ({
+        id: row.id,
+        readyAt: row.pickup_received_at,
+      })),
+    ]
+      .filter(
+        (row, index, rows) =>
+          rows.findIndex((candidate) => candidate.id === row.id) === index,
+      )
+      .sort((a, b) =>
+        String(a.readyAt ?? "").localeCompare(String(b.readyAt ?? "")),
+      )
+      .slice(0, 25);
 
     const results = [];
 
-    for (const row of data ?? []) {
+    for (const row of candidateRows) {
       try {
         results.push(await payout(row.id));
       } catch (error) {
@@ -557,7 +692,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      checked: data?.length ?? 0,
+      checked: candidateRows.length,
       results,
     });
   } catch (error) {
