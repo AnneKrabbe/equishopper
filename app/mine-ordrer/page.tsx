@@ -156,6 +156,7 @@ export default function MyOrdersPage() {
   const [reviewError, setReviewError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [pickupConfirmOrder, setPickupConfirmOrder] = useState<OrderView | null>(null);
 
   useEffect(() => {
     void loadOrders();
@@ -632,8 +633,9 @@ const response = await fetch("/api/reviews", {
             </h1>
 
             <p className="mt-3 max-w-2xl leading-7 text-stone-600">
-              Følg dine køb, se leveringsoplysninger og bekræft,
-              når varen er modtaget.
+              Følg dine køb og se leveringsoplysninger. Ved DAO-fragt
+              frigives betalingen automatisk efter levering, hvis der ikke
+              oprettes en tvist.
             </p>
           </div>
 
@@ -722,8 +724,8 @@ const response = await fetch("/api/reviews", {
                       !order.stripe_transfer_id &&
                       effectiveStatus !== "pending" &&
                       effectiveStatus !== "cancelled";
-                    const canConfirm =
-                      effectiveStatus === "shipped" ||
+                    const canConfirmPickup =
+                      order.shipping_method === "pickup" &&
                       effectiveStatus === "ready_for_pickup";
                     const existingReview =
                       reviewsByOrderId[order.id];
@@ -906,26 +908,15 @@ const response = await fetch("/api/reviews", {
                                 )
                               )}
 
-                              {canConfirm && (
+                              {canConfirmPickup && (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    void confirmReceived(order.id)
-                                  }
-                                  disabled={
-                                    confirmingOrderId === order.id
-                                  }
+                                  onClick={() => setPickupConfirmOrder(order)}
+                                  disabled={confirmingOrderId === order.id}
                                   className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d4af37] px-6 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  {confirmingOrderId === order.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <PackageCheck className="h-4 w-4" />
-                                  )}
-
-                                  {confirmingOrderId === order.id
-                                    ? "Gemmer..."
-                                    : "Jeg har modtaget varen"}
+                                  <PackageCheck className="h-4 w-4" />
+                                  Jeg har hentet varen – frigiv betaling
                                 </button>
                               )}
 
@@ -979,6 +970,77 @@ const response = await fetch("/api/reviews", {
           </div>
         )}
       </div>
+
+      {pickupConfirmOrder && (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/55 px-4 py-8 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pickup-confirm-title"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              confirmingOrderId !== pickupConfirmOrder.id
+            ) {
+              setPickupConfirmOrder(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg rounded-[28px] border border-[#eadfcb] bg-[#fbfaf7] p-6 shadow-2xl md:p-8">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#fff8df] text-[#b79a3d]">
+                <PackageCheck className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2
+                  id="pickup-confirm-title"
+                  className="font-serif text-3xl text-[#063f32]"
+                >
+                  Har du hentet varen?
+                </h2>
+
+                <p className="mt-3 text-sm leading-6 text-stone-600">
+                  Når du bekræfter, afsluttes handlen, og betalingen
+                  frigives til sælger. Bekræft derfor kun, når du har
+                  modtaget varen og kontrolleret, at alt er som aftalt.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPickupConfirmOrder(null)}
+                disabled={confirmingOrderId === pickupConfirmOrder.id}
+                className="rounded-full border border-[#d9cfbd] px-6 py-3 font-semibold text-stone-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Annuller
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const orderId = pickupConfirmOrder.id;
+                  await confirmReceived(orderId);
+                  setPickupConfirmOrder(null);
+                }}
+                disabled={confirmingOrderId === pickupConfirmOrder.id}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d4af37] px-7 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {confirmingOrderId === pickupConfirmOrder.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PackageCheck className="h-4 w-4" />
+                )}
+                {confirmingOrderId === pickupConfirmOrder.id
+                  ? "Frigiver betaling..."
+                  : "Ja, frigiv betaling"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {disputeIntroOrder && (
         <div
@@ -1480,17 +1542,19 @@ function StatusExplanation({
     },
     ready_for_pickup: {
       text:
-        "Varen er klar til afhentning. Skriv til sælger for at aftale tid og sted. Bekræft først modtagelsen, når du har fået varen.",
+        "Varen er klar til afhentning. Skriv til sælger for at aftale tid og sted. Når du har hentet og kontrolleret varen, skal du trykke på “Jeg har hentet varen – frigiv betaling”.",
       icon: MapPin,
     },
     shipped: {
       text:
-        "Sælgeren har markeret varen som sendt. Bekræft modtagelsen, når varen er ankommet.",
+        "Varen er sendt. Når DAO registrerer pakken som leveret, frigives betalingen automatisk til sælger efter 48 timer, hvis der ikke er oprettet en tvist.",
       icon: Truck,
     },
     completed: {
       text:
-        "Du har bekræftet, at varen er modtaget. Ordren er afsluttet.",
+        order.shipping_method === "pickup"
+          ? "Afhentningen er bekræftet, betalingen er frigivet til sælger, og ordren er afsluttet."
+          : "Ordren er afsluttet, og betalingen er frigivet til sælger.",
       icon: CheckCircle2,
     },
     cancelled: {
