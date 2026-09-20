@@ -1754,7 +1754,7 @@ function getStatusLabel(status: FulfillmentStatus) {
 }
 
 function getDaoTrackingUrl(trackingNumber: string) {
-  const trackingCode = trackingNumber.trim();
+  const trackingCode = trackingNumber.replace(/-/g, "").trim();
 
   // DAO's officielle Track & Trace-side med fragtkoden forudfyldt.
   return `https://dao.as/find-din-pakke/#q=${encodeURIComponent(trackingCode)}`;
