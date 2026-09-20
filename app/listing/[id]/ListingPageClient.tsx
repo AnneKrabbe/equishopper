@@ -982,6 +982,15 @@ export default function ListingPageClient({
       {listing.price.toLocaleString("da-DK")} kr.
     </p>
 
+    {!isOwnListing && !isSold && (
+      <div className="mt-3 flex items-center gap-2 text-sm text-stone-600">
+        <span className="font-semibold text-[#111111]">Klarna</span>
+        <span aria-hidden="true">·</span>
+        <span>Betal nu eller senere</span>
+        <span className="text-stone-400">Se muligheder ved betaling</span>
+      </div>
+    )}
+
     <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-stone-500">
       <span>{listing.view_count ?? 0} visninger</span>
 

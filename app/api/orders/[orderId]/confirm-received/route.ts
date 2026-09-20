@@ -3,7 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendReviewReminderEmail } from "@/lib/email/email-service";
+import {
+  sendPaymentReleasedBuyerEmail,
+  sendPaymentReleasedSellerEmail,
+  sendReviewReminderEmail,
+} from "@/lib/email/email-service";
 
 export const runtime = "nodejs";
 
@@ -159,6 +163,7 @@ export async function POST(
         finalizedOrder ?? preparedOrder,
       );
       await ensureReviewReminderEmail(finalizedOrder ?? preparedOrder);
+      await sendPaymentReleasedEmails(finalizedOrder ?? preparedOrder);
 
       const response: SuccessResponse = {
         success: true,
@@ -305,6 +310,164 @@ export async function POST(
       },
     );
   }
+}
+
+async function sendPaymentReleasedEmails(order: PreparedOrder) {
+  try {
+    const [buyerAuthResult, sellerAuthResult, profilesResult, orderItemResult] =
+      await Promise.all([
+        supabaseAdmin.auth.admin.getUserById(order.buyer_id),
+        supabaseAdmin.auth.admin.getUserById(order.seller_id),
+        supabaseAdmin
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", [order.buyer_id, order.seller_id]),
+        supabaseAdmin
+          .from("order_items")
+          .select("title_snapshot, unit_price, quantity")
+          .eq("order_id", order.id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+    if (buyerAuthResult.error) {
+      throw buyerAuthResult.error;
+    }
+
+    if (sellerAuthResult.error) {
+      throw sellerAuthResult.error;
+    }
+
+    if (profilesResult.error) {
+      throw profilesResult.error;
+    }
+
+    if (orderItemResult.error) {
+      throw orderItemResult.error;
+    }
+
+    const buyerEmail = buyerAuthResult.data.user?.email ?? null;
+    const sellerEmail = sellerAuthResult.data.user?.email ?? null;
+
+    const buyerProfile = profilesResult.data?.find(
+      (profile) => profile.id === order.buyer_id,
+    );
+    const sellerProfile = profilesResult.data?.find(
+      (profile) => profile.id === order.seller_id,
+    );
+
+    const orderItem = orderItemResult.data;
+    const listingTitle =
+      orderItem?.title_snapshot?.trim() || "din handel";
+
+    const unitPrice = Number(orderItem?.unit_price ?? 0);
+    const quantity = Number(orderItem?.quantity ?? 1);
+
+    const salePrice = formatDkkFromKroner(unitPrice * quantity);
+
+    const payoutAmount = toIntegerAmount(
+      order.payout_net_amount ?? order.seller_payout_amount,
+    );
+
+    if (payoutAmount === null || payoutAmount < 0) {
+      throw new Error(
+        "Kunne ikke beregne udbetalingsbeløbet til payout-mailen.",
+      );
+    }
+
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://www.equishopper.dk";
+
+    const orderUrl = `${siteUrl.replace(/\/$/, "")}/mine-ordrer`;
+
+    const jobs: Promise<unknown>[] = [];
+
+    if (sellerEmail) {
+      jobs.push(
+        sendPaymentReleasedSellerEmail({
+          to: {
+            email: sellerEmail,
+            name: sellerProfile?.full_name ?? null,
+          },
+          props: {
+            sellerName: sellerProfile?.full_name ?? null,
+            listingTitle,
+            salePrice,
+            payoutAmount: formatDkkFromOre(payoutAmount),
+            orderUrl,
+          },
+        }),
+      );
+    } else {
+      console.warn(
+        "Betalingsmail til sælger blev ikke sendt: sælger mangler e-mail.",
+        { orderId: order.id },
+      );
+    }
+
+    if (buyerEmail) {
+      jobs.push(
+        sendPaymentReleasedBuyerEmail({
+          to: {
+            email: buyerEmail,
+            name: buyerProfile?.full_name ?? null,
+          },
+          props: {
+            buyerName: buyerProfile?.full_name ?? null,
+            listingTitle,
+            salePrice,
+            orderUrl,
+          },
+        }),
+      );
+    } else {
+      console.warn(
+        "Betalingsmail til køber blev ikke sendt: køber mangler e-mail.",
+        { orderId: order.id },
+      );
+    }
+
+    const results = await Promise.allSettled(jobs);
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error(
+          "En betalingsfrigivelsesmail kunne ikke sendes:",
+          result.reason,
+        );
+      }
+    }
+  } catch (error) {
+    /*
+     * Mailfejl må aldrig blokere en allerede gennemført
+     * Stripe-transfer eller afslutning af ordren.
+     */
+    console.error(
+      "Betalingsfrigivelsesmailene kunne ikke sendes:",
+      error,
+    );
+  }
+}
+
+function formatDkkFromOre(amount: number) {
+  return new Intl.NumberFormat("da-DK", {
+    style: "currency",
+    currency: "DKK",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount / 100);
+}
+
+function formatDkkFromKroner(amount: number) {
+  return new Intl.NumberFormat("da-DK", {
+    style: "currency",
+    currency: "DKK",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 async function ensureReviewNotification(order: PreparedOrder) {

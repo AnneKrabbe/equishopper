@@ -3,11 +3,13 @@ import { Resend } from "resend";
 import { CounterOfferEmail } from "@/emails/templates/counter-offer";
 import { ItemShippedEmail } from "@/emails/templates/item-shipped";
 import { ItemSoldEmail } from "@/emails/templates/item-sold";
-import  NewMessageEmail  from "@/emails/templates/new-message";
+import NewMessageEmail from "@/emails/templates/new-message";
 import { NewOfferEmail } from "@/emails/templates/new-offer";
 import { OfferAcceptedEmail } from "@/emails/templates/offer-accepted";
 import { OfferRejectedEmail } from "@/emails/templates/offer-rejected";
 import { OrderConfirmationEmail } from "@/emails/templates/order-confirmation";
+import { PaymentReleasedBuyerEmail } from "@/emails/templates/payment-released-buyer";
+import { PaymentReleasedSellerEmail } from "@/emails/templates/payment-released-seller";
 import { ReviewReminderEmail } from "@/emails/templates/review-reminder";
 
 const resendApiKey = process.env.RESEND_API_KEY;
@@ -186,5 +188,33 @@ export async function sendReviewReminderEmail({
     to,
     subject: `Hvordan gik handlen med ${props.listingTitle}?`,
     react: <ReviewReminderEmail {...props} />,
+  });
+}
+
+export async function sendPaymentReleasedSellerEmail({
+  to,
+  props,
+}: {
+  to: EmailRecipient;
+  props: React.ComponentProps<typeof PaymentReleasedSellerEmail>;
+}) {
+  return sendEmail({
+    to,
+    subject: `Din betaling er frigivet: ${props.listingTitle}`,
+    react: <PaymentReleasedSellerEmail {...props} />,
+  });
+}
+
+export async function sendPaymentReleasedBuyerEmail({
+  to,
+  props,
+}: {
+  to: EmailRecipient;
+  props: React.ComponentProps<typeof PaymentReleasedBuyerEmail>;
+}) {
+  return sendEmail({
+    to,
+    subject: `Din handel er gennemført: ${props.listingTitle}`,
+    react: <PaymentReleasedBuyerEmail {...props} />,
   });
 }

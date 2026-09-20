@@ -1163,12 +1163,19 @@ export default function CartPage() {
                     : "Gå til sikker betaling"}
                 </button>
 
-                <div className="mt-4 flex items-start gap-2 text-xs leading-5 text-stone-500">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 flex-none text-[#0b5a47]" />
-                  <p>
-                    Du sendes videre til Stripe, hvor betalingen
-                    gennemføres sikkert.
-                  </p>
+                <div className="mt-4 rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-4">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 flex-none text-[#0b5a47]" />
+                    <div>
+                      <p className="text-sm font-semibold text-[#063f32]">
+                        Betal sikkert med Kort · MobilePay · Klarna
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        Du sendes videre til Stripe, hvor du vælger blandt de
+                        betalingsmuligheder, der er tilgængelige for dit køb.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-5 flex gap-3 rounded-2xl bg-[#f8f6f1] p-4 text-sm text-stone-600">
