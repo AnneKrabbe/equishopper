@@ -12,6 +12,8 @@ import {
   MessageCircle,
   Newspaper,
   Package,
+  Scale,
+  Tags,
   ShoppingBag,
   Store,
   UserRound,
@@ -351,9 +353,23 @@ export default function Header() {
                     />
 
                     <ProfileMenuLink
+                      href="/salg"
+                      label="Mine salg"
+                      icon={<Tags size={19} />}
+                      onClick={() => setProfileMenuOpen(false)}
+                    />
+
+                    <ProfileMenuLink
                       href="/mine-annoncer"
                       label="Mine annoncer"
                       icon={<Package size={19} />}
+                      onClick={() => setProfileMenuOpen(false)}
+                    />
+
+                    <ProfileMenuLink
+                      href="/profil/tvister"
+                      label="Mine tvister"
+                      icon={<Scale size={19} />}
                       onClick={() => setProfileMenuOpen(false)}
                     />
 
@@ -496,9 +512,34 @@ export default function Header() {
           {user ? (
             <>
               <MobileMenuLink
+                href="/profil"
+                label="Min profil"
+                icon={<UserRound size={22} />}
+              />
+              <MobileMenuLink
                 href="/mine-ordrer"
                 label="Mine ordrer"
                 icon={<ShoppingBag size={22} />}
+              />
+              <MobileMenuLink
+                href="/salg"
+                label="Mine salg"
+                icon={<Tags size={22} />}
+              />
+              <MobileMenuLink
+                href="/mine-annoncer"
+                label="Mine annoncer"
+                icon={<Package size={22} />}
+              />
+              <MobileMenuLink
+                href="/profil/tvister"
+                label="Mine tvister"
+                icon={<Scale size={22} />}
+              />
+              <MobileMenuLink
+                href="/favorites"
+                label="Favoritter"
+                icon={<HeartIcon className="h-[22px] w-[22px]" />}
               />
               <MobileMenuLink
                 href="/kurv"

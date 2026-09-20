@@ -484,11 +484,19 @@ export default function ProfilePage() {
       "image/jpeg",
       "image/png",
       "image/webp",
+      "image/heic",
+      "image/heif",
     ];
 
-    if (!allowedTypes.includes(file.type)) {
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+
+    if (
+      !allowedTypes.includes(file.type) &&
+      !allowedExtensions.includes(extension)
+    ) {
       setErrorMessage(
-        "Profilbilledet skal være JPG, PNG eller WebP."
+        "Profilbilledet skal være JPG, PNG, WebP, HEIC eller HEIF."
       );
       event.target.value = "";
       return;
@@ -533,11 +541,14 @@ export default function ProfilePage() {
         .upload(filePath, avatarFile, {
           cacheControl: "3600",
           upsert: false,
-          contentType: avatarFile.type,
+          contentType: avatarFile.type || undefined,
         });
 
       if (uploadError) {
-        throw uploadError;
+        console.error("Kunne ikke uploade profilbillede:", uploadError);
+        throw new Error(
+          "Profilbilledet kunne ikke uploades. Prøv et andet billede eller prøv igen."
+        );
       }
 
       const {
@@ -649,7 +660,27 @@ export default function ProfilePage() {
         );
       }
 
-      const location = await findCoordinates();
+      let location: {
+        latitude: number | null;
+        longitude: number | null;
+        postalCode: string;
+        city: string;
+      } = {
+        latitude: profile?.latitude ?? null,
+        longitude: profile?.longitude ?? null,
+        postalCode: form.postalCode.trim(),
+        city: form.city.trim(),
+      };
+
+      try {
+        location = await findCoordinates();
+      } catch (locationError) {
+        console.warn(
+          "Adressen kunne ikke geokodes, men profilen gemmes stadig:",
+          locationError
+        );
+      }
+
       const newAvatarUrl = await uploadAvatar();
 
       const { data, error } = await supabase
@@ -718,7 +749,10 @@ export default function ProfilePage() {
       }
 
       setAvatarPreview(null);
-      setLocationFound(true);
+      setLocationFound(
+        typeof location.latitude === "number" &&
+          typeof location.longitude === "number"
+      );
 
       setForm((current) => ({
         ...current,
@@ -842,7 +876,7 @@ export default function ProfilePage() {
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70 sm:text-xl">
-              Administrer dine oplysninger, notifikationer, køb, salg og privatliv.
+              Administrer dine profiloplysninger, adresse og udbetaling.
             </p>
           </div>
         </section>
@@ -888,7 +922,7 @@ export default function ProfilePage() {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                         onChange={handleAvatarSelection}
                         className="hidden"
                       />
@@ -906,12 +940,6 @@ export default function ProfilePage() {
                       </p>
 
                       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3">
-                        <VerificationStatus
-                          verified={
-                            profile?.phone_verified ?? false
-                          }
-                          label="Telefon"
-                        />
                         <VerificationStatus
                           verified={emailVerified}
                           label="Mail"
@@ -940,252 +968,6 @@ export default function ProfilePage() {
                 </div>
               </section>
 
-              <section className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.06)] sm:p-8">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0b5a47]">
-                      Din konto
-                    </p>
-                  </div>
-
-                  {unreadNotifications.length > 0 && (
-                    <p className="text-sm font-medium text-stone-500">
-                      {unreadNotifications.length} ulæst
-                      {unreadNotifications.length === 1 ? "" : "e"} notifikation
-                      {unreadNotifications.length === 1 ? "" : "er"}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <DashboardLink
-                    href="/mine-ordrer"
-                    title="Mine ordrer"
-                    description="Følg dine køb og bekræft modtagelse."
-                    icon={<PackageIcon />}
-                    badge={buyerNotificationCount}
-                  />
-
-                  <DashboardLink
-                    href="/profil/tvister"
-                    title="Mine tvister"
-                    description="Følg dine åbne og afsluttede tvistsager."
-                    icon={<DisputeIcon />}
-                    badge={activeDisputeCount}
-                  />
-
-                  {profile?.role === "admin" && (
-                    <DashboardLink
-                      href="/admin/tvister"
-                      title="Adminboard"
-                      description="Behandl tvister og administrer åbne sager."
-                      icon={<AdminIcon />}
-                    />
-                  )}
-
-                  <DashboardLink
-                    href="/salg"
-                    title="Mine salg"
-                    description="Se nye salg, og gør ordrer klar."
-                    icon={<ShopIcon />}
-                    badge={sellerNotificationCount}
-                  />
-
-                  <DashboardLink
-                    href="/favorites"
-                    title="Favoritter"
-                    description="Se de annoncer, du har gemt."
-                    icon={<HeartIcon />}
-                  />
-
-                  <DashboardLink
-                    href="/mine-annoncer"
-                    title="Mine annoncer"
-                    description="Administrer dine aktive annoncer."
-                    icon={<ListIcon />}
-                  />
-
-                  <DashboardLink
-                    href="/sell"
-                    title="Opret annonce"
-                    description="Sæt nyt udstyr til salg."
-                    icon={<PlusIcon />}
-                  />
-
-                  <DashboardLink
-                    href="#profil"
-                    title="Profiloplysninger"
-                    description="Rediger navn, adresse og lokation."
-                    icon={<UserIcon />}
-                  />
-                </div>
-              </section>
-
-              <section
-                id="udbetaling"
-                className={`scroll-mt-32 rounded-[30px] ${
-                  payoutSetupRequested &&
-                  !(
-                    profile?.stripe_details_submitted &&
-                    profile?.stripe_payouts_enabled
-                  )
-                    ? "ring-4 ring-[#d4af37]/35"
-                    : ""
-                }`}
-              >
-                {payoutSetupRequested &&
-                  !(
-                    profile?.stripe_details_submitted &&
-                    profile?.stripe_payouts_enabled
-                  ) && (
-                    <div className="mb-4 rounded-[24px] border border-[#d4af37]/50 bg-[#fff9e8] p-5 sm:p-6">
-                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a6a00]">
-                        Din vare er solgt
-                      </p>
-                      <h2 className="mt-2 font-serif text-2xl font-bold text-[#063f32]">
-                        Aktivér udbetaling
-                      </h2>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-                        Før pengene fra dit salg kan overføres til dig, skal
-                        din udbetaling aktiveres hos Stripe, Equishoppers
-                        sikre betalingspartner.
-                      </p>
-                      {payoutOrderId && (
-                        <p className="mt-2 text-xs text-stone-500">
-                          Din ordre er allerede registreret. Du skal kun
-                          færdiggøre udbetalingsopsætningen nedenfor.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                {payoutSetupRequested &&
-                  profile?.stripe_details_submitted &&
-                  profile?.stripe_payouts_enabled && (
-                    <div className="mb-4 rounded-[24px] border border-[#cbdccb] bg-[#f0f6f1] p-5 sm:p-6">
-                      <p className="font-semibold text-[#063f32]">
-                        Udbetaling er klar ✓
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-stone-600">
-                        Din Stripe-opsætning er færdig. Eventuelle ventende
-                        udbetalinger behandles automatisk.
-                      </p>
-                    </div>
-                  )}
-
-                <StripeConnectCard
-                  connected={Boolean(profile?.stripe_account_id)}
-                  detailsSubmitted={
-                    profile?.stripe_details_submitted ?? false
-                  }
-                  payoutsEnabled={
-                    profile?.stripe_payouts_enabled ?? false
-                  }
-                />
-              </section>
-
-              <section className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.06)] sm:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0b5a47]">
-                      Notifikationer
-                    </p>
-                  </div>
-
-                  {unreadNotifications.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={markAllNotificationsRead}
-                      disabled={markingNotifications}
-                      className="self-start rounded-full border border-[#0b5a47] px-4 py-2 text-sm font-semibold text-[#063f32] transition hover:bg-[#edf4ef] disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
-                    >
-                      {markingNotifications
-                        ? "Markerer..."
-                        : "Markér alle som læst"}
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-6">
-                  {notificationsLoading ? (
-                    <div className="space-y-3">
-                      {[0, 1, 2].map((item) => (
-                        <div
-                          key={item}
-                          className="h-24 animate-pulse rounded-2xl bg-stone-100"
-                        />
-                      ))}
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-stone-300 bg-[#faf9f6] px-5 py-10 text-center">
-                      <BellIcon className="mx-auto h-7 w-7 text-stone-400" />
-                      <p className="mt-3 font-semibold text-[#063f32]">
-                        Ingen notifikationer endnu
-                      </p>
-                      <p className="mt-1 text-sm text-stone-500">
-                        Nye køb, salg og leveringsopdateringer vises her.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-stone-200 overflow-hidden rounded-2xl border border-stone-200">
-                      {notifications.map((notification) => (
-                        <button
-                          key={notification.id}
-                          type="button"
-                          onClick={() =>
-                            markNotificationRead(notification)
-                          }
-                          className={`flex w-full items-start gap-4 px-4 py-4 text-left transition hover:bg-[#f6f8f4] sm:px-5 ${
-                            notification.read_at
-                              ? "bg-white"
-                              : "bg-[#f0f6f1]"
-                          }`}
-                        >
-                          <span
-                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                              notification.read_at
-                                ? "bg-stone-100 text-stone-500"
-                                : "bg-[#063f32] text-white"
-                            }`}
-                          >
-                            <NotificationIcon
-                              type={notification.notification_type}
-                            />
-                          </span>
-
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-start justify-between gap-3">
-                              <span className="font-semibold text-[#063f32]">
-                                {notification.title}
-                              </span>
-
-                              {!notification.read_at && (
-                                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-                              )}
-                            </span>
-
-                            <span className="mt-1 block text-sm leading-6 text-stone-600">
-                              {notification.message}
-                            </span>
-
-                            <span className="mt-2 block text-xs font-medium text-stone-400">
-                              {formatNotificationDate(
-                                notification.created_at
-                              )}
-                            </span>
-                          </span>
-
-                          {notification.href && (
-                            <span className="mt-3 shrink-0 text-[#0b5a47]">
-                              <ArrowRightIcon />
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
 
               <FormSection title="Personlige oplysninger">
                 <div className="grid gap-5 sm:grid-cols-2">
@@ -1433,6 +1215,78 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </FormSection>
+              </section>
+
+              <section
+                id="udbetaling"
+                className={`scroll-mt-32 rounded-[30px] ${
+                  payoutSetupRequested &&
+                  !(
+                    profile?.stripe_details_submitted &&
+                    profile?.stripe_payouts_enabled
+                  )
+                    ? "ring-4 ring-[#d4af37]/35"
+                    : ""
+                }`}
+              >
+                {payoutSetupRequested &&
+                  !(
+                    profile?.stripe_details_submitted &&
+                    profile?.stripe_payouts_enabled
+                  ) && (
+                    <div className="mb-4 rounded-[24px] border border-[#d4af37]/50 bg-[#fff9e8] p-5 sm:p-6">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a6a00]">
+                        Din vare er solgt
+                      </p>
+                      <h2 className="mt-2 font-serif text-2xl font-bold text-[#063f32]">
+                        Aktivér udbetaling
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+                        Før pengene fra dit salg kan overføres til dig, skal
+                        din udbetaling aktiveres hos Stripe, Equishoppers
+                        sikre betalingspartner.
+                      </p>
+                      {payoutOrderId && (
+                        <p className="mt-2 text-xs text-stone-500">
+                          Din ordre er allerede registreret. Du skal kun
+                          færdiggøre udbetalingsopsætningen nedenfor.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                {payoutSetupRequested &&
+                  profile?.stripe_details_submitted &&
+                  profile?.stripe_payouts_enabled && (
+                    <div className="mb-4 rounded-[24px] border border-[#cbdccb] bg-[#f0f6f1] p-5 sm:p-6">
+                      <p className="font-semibold text-[#063f32]">
+                        Udbetaling er klar ✓
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                        Din Stripe-opsætning er færdig. Eventuelle ventende
+                        udbetalinger behandles automatisk.
+                      </p>
+                    </div>
+                  )}
+
+                <div className="mb-4 px-1">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0b5a47]">
+                    Bankoplysninger og udbetaling
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Administrer din udbetalingskonto sikkert via Stripe.
+                  </p>
+                </div>
+
+                <StripeConnectCard
+                  connected={Boolean(profile?.stripe_account_id)}
+                  detailsSubmitted={
+                    profile?.stripe_details_submitted ?? false
+                  }
+                  payoutsEnabled={
+                    profile?.stripe_payouts_enabled ?? false
+                  }
+                />
               </section>
 
               <section
