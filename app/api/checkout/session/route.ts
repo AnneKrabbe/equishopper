@@ -683,6 +683,10 @@ export async function POST(request: NextRequest) {
         mode: "payment",
         locale: "da",
 
+        // Vis både almindelige kort og MobilePay i Stripe Checkout.
+        // Resten af Equishoppers betalings- og payout-flow er uændret.
+        payment_method_types: ["card", "mobilepay", "klarna"],
+
         client_reference_id:
           order.id,
 
