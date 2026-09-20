@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   sendPaymentReleasedBuyerEmail,
   sendPaymentReleasedSellerEmail,
+  sendReviewReminderEmail,
 } from "@/lib/email/email-service";
 
 export const runtime = "nodejs";
@@ -52,6 +53,217 @@ async function getAuthEmail(userId: string) {
   return data.user?.email ?? null;
 }
 
+async function ensureReviewNotification(orderId: string) {
+  try {
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from("orders")
+      .select("id, buyer_id")
+      .eq("id", orderId)
+      .single();
+
+    if (orderError) {
+      throw orderError;
+    }
+
+    const { data: existingNotification, error: lookupError } =
+      await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", order.buyer_id)
+        .eq("order_id", order.id)
+        .eq("notification_type", "order_completed")
+        .eq("title", "Hvordan gik handlen?")
+        .maybeSingle();
+
+    if (lookupError) {
+      throw lookupError;
+    }
+
+    if (existingNotification) {
+      return;
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from("notifications")
+      .insert({
+        user_id: order.buyer_id,
+        order_id: order.id,
+        notification_type: "order_completed",
+        title: "Hvordan gik handlen?",
+        message:
+          "Din handel er gennemført. Skriv en anmeldelse af sælgeren.",
+        href: "/mine-ordrer",
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
+  } catch (error) {
+    console.error(
+      `[auto-payout] Anmeldelsesnotifikation kunne ikke oprettes for ordre ${orderId}:`,
+      error,
+    );
+  }
+}
+
+async function ensureReviewReminderEmail(orderId: string) {
+  try {
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from("orders")
+      .select("id, buyer_id, seller_id")
+      .eq("id", orderId)
+      .single();
+
+    if (orderError) {
+      throw orderError;
+    }
+
+    const { data: reminderState, error: reminderStateError } =
+      await supabaseAdmin
+        .from("orders")
+        .select("review_reminder_sent_at")
+        .eq("id", order.id)
+        .maybeSingle();
+
+    if (reminderStateError) {
+      throw reminderStateError;
+    }
+
+    if (reminderState?.review_reminder_sent_at) {
+      return;
+    }
+
+    const [buyerAuthResult, buyerProfileResult, sellerProfileResult, itemResult] =
+      await Promise.all([
+        supabaseAdmin.auth.admin.getUserById(order.buyer_id),
+        supabaseAdmin
+          .from("profiles")
+          .select("full_name")
+          .eq("id", order.buyer_id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("profiles")
+          .select("full_name, username")
+          .eq("id", order.seller_id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("order_items")
+          .select("listing_id, title_snapshot")
+          .eq("order_id", order.id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+    if (buyerAuthResult.error) {
+      throw buyerAuthResult.error;
+    }
+
+    if (buyerProfileResult.error) {
+      console.error(
+        `[auto-payout] Kunne ikke hente køberprofil til anmeldelsesmail for ordre ${orderId}:`,
+        buyerProfileResult.error,
+      );
+    }
+
+    if (sellerProfileResult.error) {
+      console.error(
+        `[auto-payout] Kunne ikke hente sælgerprofil til anmeldelsesmail for ordre ${orderId}:`,
+        sellerProfileResult.error,
+      );
+    }
+
+    if (itemResult.error) {
+      throw itemResult.error;
+    }
+
+    const buyerEmail = buyerAuthResult.data.user?.email ?? null;
+
+    if (!buyerEmail) {
+      console.warn(
+        `[auto-payout] Anmeldelsesmail blev ikke sendt: køber mangler e-mail. Ordre ${orderId}.`,
+      );
+      return;
+    }
+
+    const item = itemResult.data;
+    const listingTitle = item?.title_snapshot?.trim() || "din handel";
+
+    let listingImageUrl: string | null = null;
+
+    if (item?.listing_id) {
+      const { data: listingImage, error: listingImageError } =
+        await supabaseAdmin
+          .from("listing_images")
+          .select("image_url")
+          .eq("listing_id", item.listing_id)
+          .order("sort_order", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+      if (listingImageError) {
+        console.error(
+          `[auto-payout] Kunne ikke hente varebillede til anmeldelsesmail for ordre ${orderId}:`,
+          listingImageError,
+        );
+      } else {
+        listingImageUrl =
+          typeof listingImage?.image_url === "string"
+            ? listingImage.image_url
+            : null;
+      }
+    }
+
+    const otherPartyName =
+      sellerProfileResult.data?.full_name?.trim() ||
+      sellerProfileResult.data?.username?.trim() ||
+      "sælgeren";
+
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://www.equishopper.dk";
+
+    const reviewUrl = `${siteUrl.replace(/\/$/, "")}/mine-ordrer`;
+
+    await sendReviewReminderEmail({
+      to: {
+        email: buyerEmail,
+        name: buyerProfileResult.data?.full_name ?? null,
+      },
+      props: {
+        recipientName: buyerProfileResult.data?.full_name ?? null,
+        otherPartyName,
+        listingTitle,
+        listingImageUrl,
+        transactionRole: "buyer",
+        reviewUrl,
+      },
+    });
+
+    const { error: markerUpdateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        review_reminder_sent_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .is("review_reminder_sent_at", null);
+
+    if (markerUpdateError) {
+      console.error(
+        `[auto-payout] Anmeldelsesmail blev sendt, men mail-markøren kunne ikke gemmes for ordre ${orderId}:`,
+        markerUpdateError,
+      );
+    }
+  } catch (error) {
+    // Review-mail må aldrig gøre en allerede gennemført payout til en payout-fejl.
+    console.error(
+      `[auto-payout] Kunne ikke sende anmeldelsesmail for ordre ${orderId}:`,
+      error,
+    );
+  }
+}
+
 async function sendPayoutEmails(orderId: string) {
   try {
     const { data: order, error: orderError } = await supabaseAdmin
@@ -87,8 +299,6 @@ async function sendPayoutEmails(orderId: string) {
         ? `${firstItem.title_snapshot} + ${items.length - 1} mere`
         : firstItem.title_snapshot;
 
-    // unit_price er numeric i databasen og forventes at være lagret i DKK,
-    // mens payout-beløbene på orders bruges som øre til Stripe.
     const unitPriceDkk = Number(firstItem.unit_price ?? 0);
     const quantity = Number(firstItem.quantity ?? 1);
     const salePrice = new Intl.NumberFormat("da-DK", {
@@ -124,7 +334,12 @@ async function sendPayoutEmails(orderId: string) {
       (profile) => profile.id === order.seller_id,
     );
 
-    const orderUrl = `https://www.equishopper.dk/mine-ordrer`;
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://www.equishopper.dk";
+
+    const orderUrl = `${siteUrl.replace(/\/$/, "")}/mine-ordrer`;
 
     const jobs: Promise<unknown>[] = [];
 
@@ -190,6 +405,12 @@ async function sendPayoutEmails(orderId: string) {
   }
 }
 
+async function runPostPayoutNotifications(orderId: string) {
+  await ensureReviewNotification(orderId);
+  await ensureReviewReminderEmail(orderId);
+  await sendPayoutEmails(orderId);
+}
+
 async function payout(id: string) {
   const { data: order, error } = await supabaseAdmin.rpc(
     "prepare_order_auto_payout",
@@ -206,9 +427,9 @@ async function payout(id: string) {
     return { id, result: "already_paid" };
   }
 
-  const amount = order.payout_net_amount;
+  const amount = Number(order.payout_net_amount);
 
-  if (amount == null || amount < 0) {
+  if (!Number.isInteger(amount) || amount < 0) {
     throw new Error("Ugyldigt payout_net_amount.");
   }
 
@@ -224,12 +445,20 @@ async function payout(id: string) {
       throw new Error(finalizeError.message);
     }
 
-    await sendPayoutEmails(id);
+    await runPostPayoutNotifications(id);
 
     return {
       id,
       result: "completed_without_transfer",
     };
+  }
+
+  if (!order.seller_stripe_account_id) {
+    throw new Error("Ordren mangler sælgerens Stripe-konto.");
+  }
+
+  if (!order.stripe_charge_id) {
+    throw new Error("Ordren mangler Stripe charge-id.");
   }
 
   const transfer = await stripe.transfers.create(
@@ -238,10 +467,12 @@ async function payout(id: string) {
       currency: (order.currency || "dkk").toLowerCase(),
       destination: order.seller_stripe_account_id,
       source_transaction: order.stripe_charge_id,
+      transfer_group: `ORDER_${id}`,
       metadata: {
         order_id: id,
         payout_type: "automatic_delivery",
       },
+      description: `Equishopper auto-udbetaling for ordre ${id}`,
     },
     {
       idempotencyKey: `equishopper-order-payout-${id}`,
@@ -260,7 +491,7 @@ async function payout(id: string) {
     throw new Error(finalizeError.message);
   }
 
-  await sendPayoutEmails(id);
+  await runPostPayoutNotifications(id);
 
   return {
     id,

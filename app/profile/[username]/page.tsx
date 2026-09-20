@@ -57,14 +57,25 @@ export default function SellerProfilePage() {
       setLoadError(null);
 
       try {
+        const isProfileId =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            username
+          );
+
+        const profileQuery = supabase
+          .from("profiles")
+          .select("*");
+
         const {
           data: profileData,
           error: profileError,
-        } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("username", username)
-          .maybeSingle();
+        } = isProfileId
+          ? await profileQuery
+              .eq("id", username)
+              .maybeSingle()
+          : await profileQuery
+              .eq("username", username)
+              .maybeSingle();
 
         if (profileError) {
           throw profileError;
@@ -244,16 +255,8 @@ export default function SellerProfilePage() {
       <Header />
 
       <main className="min-h-screen overflow-x-clip bg-stone-50">
-        {/*
-          SellerHeader ligger uden for max-width-wrapperen.
-          Derfor kan hero-billedet fylde hele browserbredden.
-        */}
         <SellerHeader profile={profile} />
 
-        {/*
-          Kun indholdet under heroen bliver centreret og begrænset
-          til max-w-7xl.
-        */}
         <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-10 sm:px-6 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
             <div className="min-w-0 space-y-8">

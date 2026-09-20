@@ -515,6 +515,23 @@ async function ensureReviewNotification(order: PreparedOrder) {
 
 async function ensureReviewReminderEmail(order: PreparedOrder) {
   try {
+    // Brug et internt timestamp på ordren som idempotency-markør.
+    // Dermed oprettes der ikke en teknisk række i brugerens notifikationer.
+    const { data: reminderState, error: reminderStateError } =
+      await supabaseAdmin
+        .from("orders")
+        .select("review_reminder_sent_at")
+        .eq("id", order.id)
+        .maybeSingle();
+
+    if (reminderStateError) {
+      throw reminderStateError;
+    }
+
+    if (reminderState?.review_reminder_sent_at) {
+      return;
+    }
+
     const { data: buyerAuth, error: buyerAuthError } =
       await supabaseAdmin.auth.admin.getUserById(order.buyer_id);
 
@@ -578,22 +595,24 @@ async function ensureReviewReminderEmail(order: PreparedOrder) {
     let listingImageUrl: string | null = null;
 
     if (orderItem?.listing_id) {
-      const { data: listing, error: listingError } =
+      const { data: listingImage, error: listingImageError } =
         await supabaseAdmin
-          .from("listings")
-          .select("images")
-          .eq("id", orderItem.listing_id)
+          .from("listing_images")
+          .select("image_url")
+          .eq("listing_id", orderItem.listing_id)
+          .order("sort_order", { ascending: true })
+          .limit(1)
           .maybeSingle();
 
-      if (listingError) {
+      if (listingImageError) {
         console.error(
           "Kunne ikke hente varebillede til anmeldelsesmail:",
-          listingError,
+          listingImageError,
         );
-      } else if (Array.isArray(listing?.images) && listing.images.length > 0) {
+      } else {
         listingImageUrl =
-          typeof listing.images[0] === "string"
-            ? listing.images[0]
+          typeof listingImage?.image_url === "string"
+            ? listingImage.image_url
             : null;
       }
     }
@@ -625,6 +644,21 @@ async function ensureReviewReminderEmail(order: PreparedOrder) {
         reviewUrl,
       },
     });
+
+    const { error: markerUpdateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        review_reminder_sent_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .is("review_reminder_sent_at", null);
+
+    if (markerUpdateError) {
+      console.error(
+        "Anmeldelsesmailen blev sendt, men mail-markøren kunne ikke gemmes:",
+        markerUpdateError,
+      );
+    }
   } catch (error) {
     /*
      * En mailfejl må aldrig blokere afslutning af ordren

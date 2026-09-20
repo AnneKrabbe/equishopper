@@ -226,48 +226,11 @@ async function handleCheckoutPaid(
 
   /*
    * Betalingen er nu bekræftet.
-   * Fjern først nu de købte varer fra køberens kurv.
+   * Markér ALTID de købte annoncer som solgt, før kurvrækkerne slettes.
    *
-   * release_listing_on_cart_delete-triggeren frigiver dem ikke,
-   * fordi ordren allerede er betalt, og annoncen fastlåses som solgt
-   * umiddelbart efter.
-   */
-  const { data: paidCartItems, error: paidCartItemsError } =
-    await supabaseAdmin
-      .from("order_items")
-      .select("listing_id")
-      .eq("order_id", order.id);
-
-  if (paidCartItemsError) {
-    throw paidCartItemsError;
-  }
-
-  const cartListingIds = Array.from(
-    new Set(
-      (paidCartItems ?? [])
-        .map((item) => item.listing_id)
-        .filter(
-          (listingId): listingId is string =>
-            typeof listingId === "string" && listingId.length > 0,
-        ),
-    ),
-  );
-
-  if (cartListingIds.length > 0) {
-    const { error: cartDeleteError } = await supabaseAdmin
-      .from("cart_items")
-      .delete()
-      .eq("user_id", order.buyer_id)
-      .in("listing_id", cartListingIds);
-
-    if (cartDeleteError) {
-      throw cartDeleteError;
-    }
-  }
-
-  /*
-   * En betalt vare skal forblive skjult fra markedspladsen.
-   * Vi fastlåser derfor annoncen som reserved til den konkrete køber.
+   * Det er vigtigt, fordi cart_items har en delete-trigger, som ellers
+   * kan frigive reservationen. Når annoncen allerede er "sold", kan
+   * kurven bagefter ryddes uden at gøre varen tilgængelig igen.
    */
   const { data: paidItems, error: paidItemsError } =
     await supabaseAdmin
@@ -295,15 +258,29 @@ async function handleCheckoutPaid(
     const { error: listingUpdateError } =
       await supabaseAdmin
         .from("listings")
-       .update({
-  status: "sold",
-  reserved_by: null,
-  reserved_at: null,
-})
+        .update({
+          status: "sold",
+          reserved_by: null,
+          reserved_at: null,
+        })
         .in("id", paidListingIds);
 
     if (listingUpdateError) {
       throw listingUpdateError;
+    }
+
+    /*
+     * Først efter annoncerne er markeret som solgt, fjernes de fra
+     * køberens kurv.
+     */
+    const { error: cartDeleteError } = await supabaseAdmin
+      .from("cart_items")
+      .delete()
+      .eq("user_id", order.buyer_id)
+      .in("listing_id", paidListingIds);
+
+    if (cartDeleteError) {
+      throw cartDeleteError;
     }
   }
 

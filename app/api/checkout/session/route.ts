@@ -282,8 +282,83 @@ export async function POST(request: NextRequest) {
     }
 
     /*
-     * Opret først den reserverede ordre gennem den
-     * eksisterende databasefunktion.
+     * En annulleret/udløbet Stripe Checkout kan efterlade varen i kurven,
+     * mens reservationen er frigivet. Reservér derfor kurvens aktive varer
+     * igen til den aktuelle køber, før create_pending_order kaldes.
+     *
+     * Opdateringen er betinget af status = active, så vi ikke overtager en
+     * vare, der i mellemtiden er reserveret eller solgt til en anden.
+     */
+    const { data: cartRows, error: cartReadError } =
+      await supabaseAdmin
+        .from("cart_items")
+        .select("listing_id")
+        .eq("user_id", user.id);
+
+    if (cartReadError) {
+      throw new Error("Kurven kunne ikke kontrolleres.");
+    }
+
+    const cartListingIds = Array.from(
+      new Set(
+        (cartRows ?? [])
+          .map((row) => row.listing_id)
+          .filter(
+            (listingId): listingId is string =>
+              typeof listingId === "string" && listingId.length > 0,
+          ),
+      ),
+    );
+
+    if (cartListingIds.length === 0) {
+      throw new Error("Din kurv er tom.");
+    }
+
+    const reservationTime = new Date().toISOString();
+
+    const { error: reserveError } = await supabaseAdmin
+      .from("listings")
+      .update({
+        status: "reserved",
+        reserved_by: user.id,
+        reserved_at: reservationTime,
+      })
+      .in("id", cartListingIds)
+      .eq("status", "active");
+
+    if (reserveError) {
+      throw new Error("Varen kunne ikke reserveres igen.");
+    }
+
+    const { data: reservationRows, error: reservationReadError } =
+      await supabaseAdmin
+        .from("listings")
+        .select("id, status, reserved_by, reserved_at")
+        .in("id", cartListingIds);
+
+    if (reservationReadError) {
+      throw new Error("Reservationen kunne ikke kontrolleres.");
+    }
+
+    const reservationIsValid =
+      (reservationRows ?? []).length === cartListingIds.length &&
+      (reservationRows ?? []).every(
+        (listing) =>
+          listing.status?.toLowerCase() === "reserved" &&
+          listing.reserved_by === user.id &&
+          typeof listing.reserved_at === "string" &&
+          new Date(listing.reserved_at).getTime() >
+            Date.now() - 30 * 60 * 1000,
+      );
+
+    if (!reservationIsValid) {
+      throw new Error(
+        "En eller flere varer er ikke længere tilgængelige. Fjern dem fra kurven og prøv igen.",
+      );
+    }
+
+    /*
+     * Opret den reserverede ordre gennem databasefunktionen.
      */
     const {
       data: createdOrderId,

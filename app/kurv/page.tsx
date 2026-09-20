@@ -117,6 +117,13 @@ export default function CartPage() {
   const [shippingNote, setShippingNote] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [useAlternateAddress, setUseAlternateAddress] = useState(false);
+  const [profileAddress, setProfileAddress] = useState({
+    fullName: "",
+    addressLine1: "",
+    postalCode: "",
+    city: "",
+    phone: "",
+  });
 
   const [servicePoints, setServicePoints] = useState<DaoServicePoint[]>([]);
   const [selectedServicePointId, setSelectedServicePointId] = useState("");
@@ -344,15 +351,23 @@ export default function CartPage() {
         );
       }
 
-      setFullName(
-        profile?.full_name ??
+      const loadedProfileAddress = {
+        fullName:
+          profile?.full_name ??
           user.user_metadata?.full_name ??
           "",
-      );
-      setAddressLine1(profile?.address ?? "");
-      setPostalCode(profile?.postal_code ?? "");
-      setCity(profile?.city ?? "");
-      setPhone(profile?.phone ?? "");
+        addressLine1: profile?.address ?? "",
+        postalCode: profile?.postal_code ?? "",
+        city: profile?.city ?? "",
+        phone: profile?.phone ?? "",
+      };
+
+      setProfileAddress(loadedProfileAddress);
+      setFullName(loadedProfileAddress.fullName);
+      setAddressLine1(loadedProfileAddress.addressLine1);
+      setPostalCode(loadedProfileAddress.postalCode);
+      setCity(loadedProfileAddress.city);
+      setPhone(loadedProfileAddress.phone);
     } catch (error) {
       console.error("Kunne ikke hente kurven:", error);
       setErrorMessage(
@@ -902,9 +917,19 @@ export default function CartPage() {
 
                         <button
                           type="button"
-                          onClick={() =>
-                            setUseAlternateAddress((current) => !current)
-                          }
+                          onClick={() => {
+                            if (useAlternateAddress) {
+                              setFullName(profileAddress.fullName);
+                              setAddressLine1(profileAddress.addressLine1);
+                              setPostalCode(profileAddress.postalCode);
+                              setCity(profileAddress.city);
+                              setPhone(profileAddress.phone);
+                              setSelectedServicePointId("");
+                            }
+
+                            setUseAlternateAddress((current) => !current);
+                            setErrorMessage("");
+                          }}
                           disabled={submitting}
                           className="self-start rounded-full border border-[#0b5a47] px-4 py-2 text-sm font-semibold text-[#063f32] transition hover:bg-[#edf4ef] disabled:cursor-not-allowed disabled:opacity-60"
                         >

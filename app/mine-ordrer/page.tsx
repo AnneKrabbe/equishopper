@@ -1691,9 +1691,12 @@ function getStatusLabel(status: FulfillmentStatus) {
 }
 
 function getDaoTrackingUrl(trackingNumber: string) {
-  return `https://dao.as/track-and-trace?query=${encodeURIComponent(
-    trackingNumber.trim(),
-  )}`;
+  const trackingCode = trackingNumber.trim();
+
+  // DAO's officielle Track & Trace-side.
+  // Koden vises fortsat på Equishopper, så brugeren kan indsætte den hos DAO,
+  // hvis DAO ikke understøtter direkte prefill via URL'en.
+  return `https://dao.as/find-din-pakke/`;
 }
 
 function getSellerDisplayName(profile: SellerProfileRow) {

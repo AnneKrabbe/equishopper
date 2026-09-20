@@ -53,6 +53,20 @@ export async function POST(
       }
     );
 
+    // Admin-klienten bruges kun til server-side handlinger, der skal
+    // kunne skrive på vegne af en anden bruger (fx notifikationer).
+    // Brugerens identitet og adgang kontrolleres stadig via supabaseUser.
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
     const {
       data: { user },
       error: authError,
@@ -335,7 +349,7 @@ export async function POST(
       : "/mine-ordrer";
 
     const { error: notificationError } =
-      await supabaseUser
+      await supabaseAdmin
         .from("notifications")
         .insert({
           user_id: reviewedUserId,
