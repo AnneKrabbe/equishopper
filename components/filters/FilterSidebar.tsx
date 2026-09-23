@@ -376,6 +376,20 @@ export default function FilterSidebar({
     onClose?.();
   }
 
+  const hasActiveFilters =
+    draftCategory !== "Alle kategorier" ||
+    Boolean(draftGroup) ||
+    Boolean(draftSubcategory) ||
+    Boolean(draftSize) ||
+    Boolean(draftBrand.trim()) ||
+    Boolean(draftCondition) ||
+    draftSort !== "newest" ||
+    minPrice !== MIN_PRICE_LIMIT.toString() ||
+    maxPrice !== MAX_PRICE_LIMIT.toString() ||
+    Boolean(postalCode.trim()) ||
+    Boolean(maxDistance) ||
+    Boolean(searchParams.get("q"));
+
   function resetFilters() {
     setDraftCategory("Alle kategorier");
     setDraftGroup("");
@@ -389,6 +403,9 @@ export default function FilterSidebar({
     setPostalCode("");
     setMaxDistance("");
     setPriceError("");
+
+    router.push("/annoncer");
+    onClose?.();
   }
 
   return (
@@ -401,9 +418,15 @@ export default function FilterSidebar({
         <button
           type="button"
           onClick={resetFilters}
-          className="text-sm font-medium text-[#55514b] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#063f32]"
+          disabled={!hasActiveFilters}
+          aria-disabled={!hasActiveFilters}
+          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+            hasActiveFilters
+              ? "border border-[#d4af37] bg-[#fff8df] text-[#063f32] shadow-sm hover:bg-[#f8edc3]"
+              : "cursor-not-allowed border border-stone-200 bg-stone-100 text-stone-400"
+          }`}
         >
-          Nulstil alle
+          Nulstil filtre
         </button>
       </div>
 

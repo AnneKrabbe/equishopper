@@ -153,10 +153,7 @@ export default function RegisterPage() {
     try {
       const fullName = form.fullName.trim();
       const email = form.email.trim().toLowerCase();
-      const username = form.username
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, "-");
+      const username = form.username.trim().toLowerCase();
 
       if (!fullName) throw new Error("Du skal indtaste dit fulde navn.");
       if (!username) throw new Error("Du skal vælge et brugernavn.");
@@ -423,13 +420,26 @@ if (
                       <input
                         required
                         type="text"
-                        autoComplete="username"
+                        name="equishopper-public-username"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        pattern="[A-Za-z0-9ÆØÅæøå_-]+"
+                        title="Brugernavnet må kun indeholde bogstaver, tal, bindestreg og underscore."
                         value={form.username}
                         onChange={(event) =>
-                          updateField("username", event.target.value)
+                          updateField(
+                            "username",
+                            event.target.value.replace(/[^a-zA-Z0-9ÆØÅæøå_-]/g, "")
+                          )
                         }
+                        placeholder="fx stinemaria"
                         className={inputClassName}
                       />
+                      <p className="mt-2 text-xs leading-5 text-stone-500">
+                        Dit offentlige brugernavn. Brug kun bogstaver, tal,
+                        bindestreg eller underscore.
+                      </p>
                     </div>
                   </FormField>
 

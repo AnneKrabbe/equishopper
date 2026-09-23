@@ -15,6 +15,7 @@ import {
   Scale,
   Tags,
   ShoppingBag,
+  ShoppingCart,
   Store,
   UserRound,
   X,
@@ -280,7 +281,7 @@ export default function Header() {
               }
               className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#d4af37] text-[#d4af37] transition hover:bg-[#d4af37]/10"
             >
-              <ShoppingBag className="h-5 w-5" />
+              <ShoppingCart className="h-5 w-5" />
 
               {cartCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#063f32]">
@@ -368,7 +369,7 @@ export default function Header() {
 
                     <ProfileMenuLink
                       href="/profil/tvister"
-                      label="Mine tvister"
+                      label="Problem med en handel"
                       icon={<Scale size={19} />}
                       onClick={() => setProfileMenuOpen(false)}
                     />
@@ -389,7 +390,7 @@ export default function Header() {
                           ? `Kurv (${cartCount})`
                           : "Kurv"
                       }
-                      icon={<ShoppingBag size={19} />}
+                      icon={<ShoppingCart size={19} />}
                       onClick={() => setProfileMenuOpen(false)}
                     />
 
@@ -533,7 +534,7 @@ export default function Header() {
               />
               <MobileMenuLink
                 href="/profil/tvister"
-                label="Mine tvister"
+                label="Problem med en handel"
                 icon={<Scale size={22} />}
               />
               <MobileMenuLink
@@ -544,7 +545,7 @@ export default function Header() {
               <MobileMenuLink
                 href="/kurv"
                 label={cartCount > 0 ? `Kurv (${cartCount})` : "Kurv"}
-                icon={<ShoppingBag size={22} />}
+                icon={<ShoppingCart size={22} />}
               />
               <MobileMenuLink
                 href="/notifikationer"
