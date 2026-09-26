@@ -107,7 +107,29 @@ async function ensureReviewNotification(orderId: string) {
 }
 
 async function ensureReviewReminderEmail(orderId: string) {
+  let claimed = false;
+
   try {
+    const { data: claimResult, error: claimError } = await supabaseAdmin.rpc(
+      "claim_review_reminder",
+      {
+        p_order_id: orderId,
+      },
+    );
+
+    if (claimError) {
+      throw new Error(
+        `Kunne ikke reservere anmeldelsesmailen: ${claimError.message}`,
+      );
+    }
+
+    claimed = claimResult === true;
+
+    // En anden cron-kørsel har allerede reserveret eller sendt mailen.
+    if (!claimed) {
+      return;
+    }
+
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
       .select("id, buyer_id, seller_id")
@@ -116,21 +138,6 @@ async function ensureReviewReminderEmail(orderId: string) {
 
     if (orderError) {
       throw orderError;
-    }
-
-    const { data: reminderState, error: reminderStateError } =
-      await supabaseAdmin
-        .from("orders")
-        .select("review_reminder_sent_at")
-        .eq("id", order.id)
-        .maybeSingle();
-
-    if (reminderStateError) {
-      throw reminderStateError;
-    }
-
-    if (reminderState?.review_reminder_sent_at) {
-      return;
     }
 
     const [buyerAuthResult, buyerProfileResult, sellerProfileResult, itemResult] =
@@ -180,10 +187,9 @@ async function ensureReviewReminderEmail(orderId: string) {
     const buyerEmail = buyerAuthResult.data.user?.email ?? null;
 
     if (!buyerEmail) {
-      console.warn(
-        `[auto-payout] Anmeldelsesmail blev ikke sendt: køber mangler e-mail. Ordre ${orderId}.`,
+      throw new Error(
+        `Anmeldelsesmail kunne ikke sendes: køber mangler e-mail. Ordre ${orderId}.`,
       );
-      return;
     }
 
     const item = itemResult.data;
@@ -240,22 +246,22 @@ async function ensureReviewReminderEmail(orderId: string) {
         reviewUrl,
       },
     });
-
-    const { error: markerUpdateError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        review_reminder_sent_at: new Date().toISOString(),
-      })
-      .eq("id", order.id)
-      .is("review_reminder_sent_at", null);
-
-    if (markerUpdateError) {
-      console.error(
-        `[auto-payout] Anmeldelsesmail blev sendt, men mail-markøren kunne ikke gemmes for ordre ${orderId}:`,
-        markerUpdateError,
-      );
-    }
   } catch (error) {
+    // Hvis mailen blev claimet, men udsendelsen fejlede, frigives claimet til retry.
+    if (claimed) {
+      const { error: releaseError } = await supabaseAdmin
+        .from("orders")
+        .update({ review_reminder_sent_at: null })
+        .eq("id", orderId);
+
+      if (releaseError) {
+        console.error(
+          `[auto-payout] Anmeldelsesmail fejlede, og reservationen kunne ikke frigives for ordre ${orderId}:`,
+          releaseError,
+        );
+      }
+    }
+
     // Review-mail må aldrig gøre en allerede gennemført payout til en payout-fejl.
     console.error(
       `[auto-payout] Kunne ikke sende anmeldelsesmail for ordre ${orderId}:`,
@@ -570,7 +576,7 @@ async function payout(id: string) {
       description: `Equishopper udbetaling for ordre ${id}`,
     },
     {
-    idempotencyKey: `equishopper-order-payout-${id}-${order.seller_stripe_account_id}`,
+      idempotencyKey: `equishopper-order-payout-${id}-${order.seller_stripe_account_id}`,
     },
   );
 
