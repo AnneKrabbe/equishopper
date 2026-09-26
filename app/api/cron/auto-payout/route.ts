@@ -570,7 +570,7 @@ async function payout(id: string) {
       description: `Equishopper udbetaling for ordre ${id}`,
     },
     {
-      idempotencyKey: `equishopper-order-payout-${id}`,
+    idempotencyKey: `equishopper-order-payout-${id}-${order.seller_stripe_account_id}`,
     },
   );
 
