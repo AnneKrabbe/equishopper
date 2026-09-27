@@ -16,6 +16,23 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+function requirePlaceholderIds() {
+  const deletedUserId = process.env.DELETED_USER_ID;
+  const deletedUser2Id = process.env.DELETED_USER_2_ID;
+
+  if (!deletedUserId || !deletedUser2Id) {
+    throw new Error(
+      "DELETED_USER_ID eller DELETED_USER_2_ID mangler i environment."
+    );
+  }
+
+  if (deletedUserId === deletedUser2Id) {
+    throw new Error("De to placeholder-brugere skal være forskellige.");
+  }
+
+  return { deletedUserId, deletedUser2Id };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization");
@@ -39,12 +56,17 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = user.id;
+    const { deletedUserId, deletedUser2Id } = requirePlaceholderIds();
+
+    if (userId === deletedUserId || userId === deletedUser2Id) {
+      return jsonError("Denne systemkonto kan ikke slettes.", 403);
+    }
 
     // En konto må ikke lukkes, mens der stadig er en handel, som kræver
     // handling eller en udbetaling. Afsluttede/cancelled handler blokerer ikke.
     const { data: relatedOrders, error: ordersError } = await supabaseAdmin
       .from("orders")
-      .select("id,status,payment_status,fulfillment_status,payout_status")
+      .select("id,status,payment_status,fulfillment_status,payout_status,buyer_id,seller_id")
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
 
     if (ordersError) {
@@ -115,48 +137,120 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Profilrækken beholdes for referentiel/historisk sammenhæng, men alle
-    // personlige/offentlige oplysninger anonymiseres.
-    const anonymousUsername = `slettet-bruger-${userId.replace(/-/g, "").slice(0, 12)}`;
+    // Flyt historiske ordre-referencer til systemets placeholder-brugere.
+    // Der vælges pr. ordre, så buyer_id og seller_id aldrig bliver ens.
+    for (const order of relatedOrders ?? []) {
+      let buyerId = order.buyer_id;
+      let sellerId = order.seller_id;
 
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .update({
-        full_name: "Slettet bruger",
-        username: anonymousUsername,
-        avatar_url: null,
-        phone: null,
-        address: null,
-        postal_code: null,
-        city: null,
-        latitude: null,
-        longitude: null,
-        location_visibility: "hidden",
-        phone_verified: false,
-        identity_verified: false,
-        stripe_account_id: null,
-        stripe_details_submitted: false,
-        stripe_charges_enabled: false,
-        stripe_payouts_enabled: false,
-      })
-      .eq("id", userId);
+      if (buyerId === userId) {
+        buyerId = sellerId === deletedUserId ? deletedUser2Id : deletedUserId;
 
-    if (profileError) {
-      console.error("Kunne ikke anonymisere profil:", profileError);
+        const { error } = await supabaseAdmin
+          .from("orders")
+          .update({ buyer_id: buyerId })
+          .eq("id", order.id)
+          .eq("buyer_id", userId);
+
+        if (error) {
+          console.error("Kunne ikke anonymisere buyer_id:", order.id, error);
+          return jsonError(
+            "Din ordrehistorik kunne ikke anonymiseres. Kontoen er ikke blevet slettet.",
+            500
+          );
+        }
+      }
+
+      if (sellerId === userId) {
+        sellerId = buyerId === deletedUserId ? deletedUser2Id : deletedUserId;
+
+        const { error } = await supabaseAdmin
+          .from("orders")
+          .update({ seller_id: sellerId })
+          .eq("id", order.id)
+          .eq("seller_id", userId);
+
+        if (error) {
+          console.error("Kunne ikke anonymisere seller_id:", order.id, error);
+          return jsonError(
+            "Din ordrehistorik kunne ikke anonymiseres. Kontoen er ikke blevet slettet.",
+            500
+          );
+        }
+      }
+    }
+
+    // order_items.seller_id bruger RESTRICT og skal derfor flyttes før
+    // Auth-brugeren kan slettes.
+    const { data: sellerItems, error: sellerItemsError } = await supabaseAdmin
+      .from("order_items")
+      .select("id,order_id")
+      .eq("seller_id", userId);
+
+    if (sellerItemsError) {
+      console.error("Kunne ikke hente order_items:", sellerItemsError);
       return jsonError(
-        "Kontoen kunne ikke anonymiseres. Prøv igen om lidt.",
+        "Din ordrehistorik kunne ikke anonymiseres. Kontoen er ikke blevet slettet.",
         500
       );
     }
 
-    // Auth-brugeren slettes til sidst. Historiske public-rækker bevares.
+    for (const item of sellerItems ?? []) {
+      const { data: order, error: orderError } = await supabaseAdmin
+        .from("orders")
+        .select("buyer_id")
+        .eq("id", item.order_id)
+        .maybeSingle();
+
+      if (orderError) {
+        console.error("Kunne ikke hente ordre til order_item:", item.order_id, orderError);
+        return jsonError(
+          "Din ordrehistorik kunne ikke anonymiseres. Kontoen er ikke blevet slettet.",
+          500
+        );
+      }
+
+      const replacementSeller =
+        order?.buyer_id === deletedUserId ? deletedUser2Id : deletedUserId;
+
+      const { error } = await supabaseAdmin
+        .from("order_items")
+        .update({ seller_id: replacementSeller })
+        .eq("id", item.id)
+        .eq("seller_id", userId);
+
+      if (error) {
+        console.error("Kunne ikke anonymisere order_item:", item.id, error);
+        return jsonError(
+          "Din ordrehistorik kunne ikke anonymiseres. Kontoen er ikke blevet slettet.",
+          500
+        );
+      }
+    }
+
+    // reserved_by bruger SET NULL, men vi rydder det eksplicit.
+    const { error: reservedByError } = await supabaseAdmin
+      .from("listings")
+      .update({ reserved_by: null })
+      .eq("reserved_by", userId);
+
+    if (reservedByError) {
+      console.error("Kunne ikke rydde reserved_by:", reservedByError);
+      return jsonError(
+        "Kontoen kunne ikke færdigbehandles. Prøv igen om lidt.",
+        500
+      );
+    }
+
+    // profiles.id og øvrige CASCADE-relationer ryddes automatisk, når Auth-
+    // brugeren slettes. Historiske orders/order_items peger nu på placeholders.
     const { error: deleteUserError } =
       await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteUserError) {
       console.error("Kunne ikke slette Supabase Auth-bruger:", deleteUserError);
       return jsonError(
-        "Profilen og annoncerne er anonymiseret, men login-kontoen kunne ikke slettes automatisk. Kontakt Equishopper support.",
+        "Dine annoncer og historiske handler er anonymiseret, men login-kontoen kunne ikke slettes automatisk. Kontakt Equishopper support.",
         500
       );
     }
