@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-import {
-  sendItemSoldEmail,
-  sendOrderConfirmationEmail,
-} from "@/lib/email/email-service";
+import { sendItemSoldEmail } from "@/lib/email/email-service";
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -494,37 +491,56 @@ async function sendPaidOrderEmails(
   const results =
     await Promise.allSettled([
       buyerEmail
-        ? sendOrderConfirmationEmail({
-            to: {
-              email: buyerEmail,
-              name: buyerName || null,
-            },
-            props: {
-              buyerName: buyerName || null,
-              sellerName:
-                sellerName || "sælgeren",
-              listingTitle:
-                primaryItem.title_snapshot,
-              listingImageUrl,
-              itemPrice: formatMoney(
-                itemPriceAmount,
-                currency,
-              ),
-              shippingPrice:
-                shippingPriceAmount > 0
-                  ? formatMoney(
-                      shippingPriceAmount,
+        ? supabaseAdmin
+            .from("email_outbox")
+            .upsert(
+              {
+                user_id: order.buyer_id,
+                order_id: order.id,
+                recipient_email: buyerEmail,
+                template_key: "order_confirmation",
+                subject: `Ordrebekræftelse: ${primaryItem.title_snapshot}`,
+                payload: {
+                  to: {
+                    email: buyerEmail,
+                    name: buyerName || null,
+                  },
+                  props: {
+                    buyerName: buyerName || null,
+                    sellerName:
+                      sellerName || "sælgeren",
+                    listingTitle:
+                      primaryItem.title_snapshot,
+                    listingImageUrl,
+                    itemPrice: formatMoney(
+                      itemPriceAmount,
                       currency,
-                    )
-                  : null,
-              totalPrice: formatMoney(
-                totalAmount,
-                currency,
-              ),
-              orderNumber,
-              orderUrl,
-            },
-          })
+                    ),
+                    shippingPrice:
+                      shippingPriceAmount > 0
+                        ? formatMoney(
+                            shippingPriceAmount,
+                            currency,
+                          )
+                        : null,
+                    totalPrice: formatMoney(
+                      totalAmount,
+                      currency,
+                    ),
+                    orderNumber,
+                    orderUrl,
+                  },
+                },
+              },
+              {
+                onConflict: "order_id,user_id,template_key",
+                ignoreDuplicates: true,
+              },
+            )
+            .then(({ error }) => {
+              if (error) throw error;
+              return null;
+            })
         : Promise.resolve(null),
 
       sellerEmail
@@ -563,7 +579,7 @@ async function sendPaidOrderEmails(
     buyerResult.status === "rejected"
   ) {
     console.error(
-      "Ordrebekræftelse kunne ikke sendes:",
+      "Ordrebekræftelse kunne ikke lægges i outbox:",
       {
         orderId: order.id,
         buyerEmail,

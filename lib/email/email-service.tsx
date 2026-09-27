@@ -22,7 +22,7 @@ if (!resendApiKey) {
 
 const resend = new Resend(resendApiKey);
 
-type EmailRecipient = {
+export type EmailRecipient = {
   email: string;
   name?: string | null;
 };
@@ -219,4 +219,119 @@ export async function sendPaymentReleasedBuyerEmail({
     subject: `Din handel er gennemført: ${props.listingTitle}`,
     react: <PaymentReleasedBuyerEmail {...props} />,
   });
+}
+
+/*
+ * Outbox-format:
+ * {
+ *   "to": { "email": "...", "name": "..." },
+ *   "props": { ...template props... }
+ * }
+ *
+ * template_key bestemmer hvilken af de eksisterende send-funktioner der bruges.
+ */
+export type EmailOutboxPayload = {
+  to: EmailRecipient;
+  props: Record<string, unknown>;
+};
+
+export async function sendEmailFromOutbox(
+  templateKey: string,
+  payload: unknown,
+): Promise<SendEmailResult> {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Ugyldigt payload i email_outbox.");
+  }
+
+  const parsed = payload as Partial<EmailOutboxPayload>;
+
+  if (
+    !parsed.to ||
+    typeof parsed.to !== "object" ||
+    typeof parsed.to.email !== "string" ||
+    !parsed.to.email.trim()
+  ) {
+    throw new Error("email_outbox payload mangler modtagerens e-mail.");
+  }
+
+  if (!parsed.props || typeof parsed.props !== "object") {
+    throw new Error("email_outbox payload mangler props.");
+  }
+
+  const to = parsed.to as EmailRecipient;
+
+  switch (templateKey) {
+    case "new_offer":
+      return sendNewOfferEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof NewOfferEmail>,
+      });
+
+    case "counter_offer":
+      return sendCounterOfferEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof CounterOfferEmail>,
+      });
+
+    case "offer_accepted":
+      return sendOfferAcceptedEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof OfferAcceptedEmail>,
+      });
+
+    case "offer_rejected":
+      return sendOfferRejectedEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof OfferRejectedEmail>,
+      });
+
+    case "new_message":
+      return sendNewMessageEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof NewMessageEmail>,
+      });
+
+    case "item_sold":
+      return sendItemSoldEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof ItemSoldEmail>,
+      });
+
+    case "order_confirmation":
+      return sendOrderConfirmationEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof OrderConfirmationEmail>,
+      });
+
+    case "item_shipped":
+      return sendItemShippedEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof ItemShippedEmail>,
+      });
+
+    case "review_reminder":
+      return sendReviewReminderEmail({
+        to,
+        props: parsed.props as React.ComponentProps<typeof ReviewReminderEmail>,
+      });
+
+    case "payment_released_seller":
+      return sendPaymentReleasedSellerEmail({
+        to,
+        props: parsed.props as React.ComponentProps<
+          typeof PaymentReleasedSellerEmail
+        >,
+      });
+
+    case "payment_released_buyer":
+      return sendPaymentReleasedBuyerEmail({
+        to,
+        props: parsed.props as React.ComponentProps<
+          typeof PaymentReleasedBuyerEmail
+        >,
+      });
+
+    default:
+      throw new Error(`Ukendt email_outbox template_key: ${templateKey}`);
+  }
 }
