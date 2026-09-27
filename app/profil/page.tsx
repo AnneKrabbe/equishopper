@@ -116,6 +116,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -778,6 +779,64 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleDeleteAccount() {
+    if (deletingAccount) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Er du sikker på, at du vil slette din konto? Dine annoncer fjernes fra Equishopper, og dine personlige profiloplysninger anonymiseres. Afsluttede handler bevares som nødvendig historik."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAccount(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Din session er udløbet. Log ind igen og prøv på ny.");
+      }
+
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ?? "Kontoen kunne ikke slettes. Prøv igen."
+        );
+      }
+
+      await supabase.auth.signOut();
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Kunne ikke slette konto:", error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Kontoen kunne ikke slettes. Prøv igen."
+      );
+      setDeletingAccount(false);
+    }
+  }
+
   const displayedAvatar = avatarPreview || avatarUrl;
 
   const initials =
@@ -1333,6 +1392,34 @@ export default function ProfilePage() {
                     Medlem siden {memberSince}
                   </p>
                 </FormSection>
+              </section>
+
+              <section className="rounded-[30px] border border-red-200 bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.06)] sm:p-8">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-red-700">
+                      Slet konto
+                    </p>
+                    <h2 className="mt-2 font-serif text-2xl font-bold text-[#063f32]">
+                      Luk din Equishopper-konto
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-stone-600">
+                      Dine annoncer fjernes fra Equishopper, og dine personlige
+                      profiloplysninger anonymiseres. Afsluttede handler og
+                      nødvendig økonomisk historik bevares. Du kan ikke slette
+                      kontoen, mens du har en aktiv handel eller tvist.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deletingAccount}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-red-300 px-6 py-3 font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deletingAccount ? "Sletter konto..." : "Slet konto"}
+                  </button>
+                </div>
               </section>
 
               {errorMessage && (
