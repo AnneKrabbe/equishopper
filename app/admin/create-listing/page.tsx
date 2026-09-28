@@ -1213,119 +1213,51 @@ function resetCategoryFields(newMainCategory: string) {
 
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-
     event.preventDefault();
-
     setMessage("");
 
-
-
     if (!subcategory) {
-
       setMessage("Vælg en underkategori.");
-
       return;
-
     }
-
-
 
     if (mainCategory === "Til hesten" && !groupName) {
-
       setMessage("Vælg en gruppe.");
-
       return;
-
     }
-
-
 
     if (!finalBrand) {
-
       setMessage("Vælg eller skriv et mærke.");
-
       return;
-
     }
-
-
 
     if (!condition) {
-
       setMessage("Vælg varens stand.");
-
       return;
-
     }
-
-
 
     if (!shippingAvailable && !pickupAvailable) {
-
       setMessage("Vælg mindst én leveringsmulighed: fragt eller afhentning.");
-
       return;
-
     }
-
-
 
     if (shippingAvailable) {
-
       if (shippingProductsLoading) {
-
-        setMessage(
-
-          "Fragtmulighederne hentes stadig. Vent et øjeblik.",
-
-        );
-
+        setMessage("Fragtmulighederne hentes stadig. Vent et øjeblik.");
         return;
-
       }
-
-
 
       if (!selectedShippingProductId) {
-
-        setMessage(
-
-          "Vælg den pakkestørrelse, varen skal sendes i.",
-
-        );
-
+        setMessage("Vælg den pakkestørrelse, varen skal sendes i.");
         return;
-
       }
-
-
 
       if (!selectedShippingProduct) {
-
         setMessage(
-
           "Den valgte pakkestørrelse er ikke længere tilgængelig. Vælg en anden.",
-
         );
-
         return;
-
       }
-
-    }
-
-
-
-    const { data: userData } = await supabase.auth.getUser();
-
-
-
-    if (!userData.user) {
-
-      setMessage("Du skal være logget ind for at oprette en annonce.");
-
-      return;
-
     }
 
     if (!selectedUser) {
@@ -1333,240 +1265,94 @@ function resetCategoryFields(newMainCategory: string) {
       return;
     }
 
-
-
     setIsSubmitting(true);
 
-
-
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error("Din session er udløbet. Log ind igen.");
+      }
 
       const categoryValue =
-
         mainCategory === "Til hesten" ? groupName : mainCategory;
 
+      const response = await fetch("/api/admin/listings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          sellerId: selectedUser.id,
+          title: title.trim(),
+          price: Number(price),
+          mainCategory,
+          category: categoryValue || null,
+          subcategory,
+          brand: finalBrand,
+          size: size || null,
+          color: color || null,
+          condition,
+          fallbackLocation: location.trim() || null,
+          shippingAvailable,
+          pickupAvailable,
+          shippingProductId:
+            shippingAvailable && selectedShippingProduct
+              ? selectedShippingProduct.id
+              : null,
+          receipt,
+          description: description.trim() || null,
+        }),
+      });
 
+      const result = (await response.json()) as {
+        listingId?: string;
+        error?: string;
+      };
 
-      const { data: profile, error: profileError } = await supabase
-
-        .from("profiles")
-
-        .select(`
-
-          postal_code,
-
-          city,
-
-          latitude,
-
-          longitude
-
-        `)
-
-        .eq("id", selectedUser.id)
-
-        .single();
-
-
-
-      if (profileError || !profile) {
-
-        throw new Error(
-
-          "Sælgerens profil kunne ikke hentes. Prøv igen."
-
-        );
-
+      if (!response.ok || !result.listingId) {
+        throw new Error(result.error ?? "Annoncen kunne ikke oprettes.");
       }
-
-
-
-const { data: listing, error } = await supabase
-
-  .from("listings")
-
-  .insert({
-
-    seller_id: selectedUser.id,
-
-    title: title.trim(),
-
-    price: Number(price),
-
-    main_category: mainCategory,
-
-    category: categoryValue || null,
-
-    subcategory,
-
-    brand: finalBrand,
-
-    size: size || null,
-
-    color: color || null,
-
-    condition,
-
-
-
-    location:
-
-      profile?.city ||
-
-      profile?.postal_code ||
-
-      location.trim() ||
-
-      null,
-
-
-
-    postal_code: profile?.postal_code || null,
-
-    city: profile?.city || null,
-
-    latitude: profile?.latitude ?? null,
-
-    longitude: profile?.longitude ?? null,
-
-
-
-    shipping_available: shippingAvailable,
-
-    pickup_available: pickupAvailable,
-
-    shipping_product_id:
-
-      shippingAvailable && selectedShippingProduct
-
-        ? selectedShippingProduct.id
-
-        : null,
-
-    receipt,
-
-    description: description.trim() || null,
-
-    favorite_count: 0,
-
-    view_count: 0,
-
-    is_we_love: false,
-
-  })
-
-  .select("id")
-
-  .single();
-
-
-
-      if (error || !listing) {
-
-        throw new Error(error?.message || "Annoncen kunne ikke oprettes.");
-
-      }
-
-
 
       for (let index = 0; index < imageItems.length; index += 1) {
+        const formData = new FormData();
+        formData.append("listingId", result.listingId);
+        formData.append("sortOrder", String(index));
+        formData.append("image", imageItems[index].file);
 
-        const file = imageItems[index].file;
+        const imageResponse = await fetch("/api/admin/listings", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        });
 
-        const fileExtension = file.name.split(".").pop() || "jpg";
+        const imageResult = (await imageResponse.json()) as {
+          error?: string;
+        };
 
-
-
-        const safeExtension = fileExtension
-
-          .toLowerCase()
-
-          .replace(/[^a-z0-9]/g, "");
-
-
-
-        const filePath = `${listing.id}/${Date.now()}-${index}.${safeExtension}`;
-
-
-
-        const { data: uploadData, error: uploadError } =
-
-          await supabase.storage
-
-            .from("listing-images")
-
-            .upload(filePath, file);
-
-
-
-        if (uploadError) {
-
+        if (!imageResponse.ok) {
           throw new Error(
-
-            `Annoncen blev oprettet, men et billede kunne ikke uploades: ${uploadError.message}`
-
+            imageResult.error ??
+              `Annoncen blev oprettet, men billede ${index + 1} kunne ikke uploades.`,
           );
-
         }
-
-
-
-        const { data: publicUrlData } = supabase.storage
-
-          .from("listing-images")
-
-          .getPublicUrl(uploadData.path);
-
-
-
-        const { error: imageError } = await supabase
-
-          .from("listing_images")
-
-          .insert({
-
-            listing_id: listing.id,
-
-            image_url: publicUrlData.publicUrl,
-
-            sort_order: index,
-
-          });
-
-
-
-        if (imageError) {
-
-          throw new Error(
-
-            `Billedet blev uploadet, men kunne ikke knyttes til annoncen: ${imageError.message}`
-
-          );
-
-        }
-
       }
 
-
-
-      window.location.href = `/listing/${listing.id}`;
-
+      window.location.href = `/listing/${result.listingId}`;
     } catch (error) {
-
       const errorMessage =
-
         error instanceof Error ? error.message : "Der opstod en ukendt fejl.";
 
-
-
       setMessage(errorMessage);
-
       setIsSubmitting(false);
-
     }
-
   }
-
 
 
   if (adminLoading) {
