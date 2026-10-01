@@ -6,24 +6,35 @@ type DawaAutocompleteItem = {
   tekst?: string;
   adresse?: {
     id?: string;
-    vejnavn?: string;
-    husnr?: string;
-    etage?: string | null;
-    dør?: string | null;
-    postnr?: string;
-    postnrnavn?: string;
     x?: number;
     y?: number;
+    postnr?: string;
+    postnrnavn?: string;
   };
 };
 
-function buildStreetAddress(address: DawaAutocompleteItem["adresse"]) {
-  if (!address) return "";
+function parseAddressText(text: string) {
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
 
-  const street = [address.vejnavn, address.husnr].filter(Boolean).join(" ");
-  const unit = [address.etage, address.dør].filter(Boolean).join(". ");
+  const last = parts.at(-1) ?? "";
+  const postalMatch = last.match(/^(\d{4})\s+(.+)$/);
 
-  return unit ? `${street}, ${unit}` : street;
+  if (!postalMatch) {
+    return {
+      address: text,
+      postalCode: null,
+      city: null,
+    };
+  }
+
+  return {
+    address: parts.slice(0, -1).join(", "),
+    postalCode: postalMatch[1],
+    city: postalMatch[2],
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -37,7 +48,7 @@ export async function GET(request: NextRequest) {
 
   const params = new URLSearchParams({
     q: query,
-    per_side: "8",
+    per_side: "10",
   });
 
   if (/^\d{4}$/.test(postalCode)) {
@@ -45,7 +56,7 @@ export async function GET(request: NextRequest) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
     const response = await fetch(
@@ -53,52 +64,68 @@ export async function GET(request: NextRequest) {
       {
         signal: controller.signal,
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+        },
       },
     );
 
     if (!response.ok) {
       console.error(
-        "Dataforsyningen returnerede fejl:",
+        "DAWA autocomplete fejl:",
         response.status,
         response.statusText,
       );
+
       return NextResponse.json({ suggestions: [] });
     }
 
     const results = (await response.json()) as DawaAutocompleteItem[];
 
     const suggestions = results
-      .map((item) => {
-        const address = item.adresse;
-        const id = address?.id;
-        const streetAddress = buildStreetAddress(address);
+      .map((item, index) => {
+        const text = item.tekst?.trim();
 
-        if (!id || !streetAddress || !address?.postnr || !address?.postnrnavn) {
-          return null;
-        }
+        // Det eneste vi kræver for at vise et forslag er selve adresseteksten.
+        // Manglende id/koordinater/postnummer må ikke få et gyldigt forslag
+        // til at forsvinde fra dropdown-listen.
+        if (!text) return null;
+
+        const parsed = parseAddressText(text);
 
         return {
-          id,
-          text:
-            item.tekst ??
-            `${streetAddress}, ${address.postnr} ${address.postnrnavn}`,
-          address: streetAddress,
-          postalCode: address.postnr,
-          city: address.postnrnavn,
-          latitude: typeof address.y === "number" ? address.y : null,
-          longitude: typeof address.x === "number" ? address.x : null,
+          id: item.adresse?.id ?? `${index}-${text}`,
+          text,
+          address: parsed.address,
+          postalCode: item.adresse?.postnr ?? parsed.postalCode,
+          city: item.adresse?.postnrnavn ?? parsed.city,
+          latitude:
+            typeof item.adresse?.y === "number" ? item.adresse.y : null,
+          longitude:
+            typeof item.adresse?.x === "number" ? item.adresse.x : null,
         };
       })
-      .filter((item) => item !== null);
+      .filter(
+        (
+          item,
+        ): item is {
+          id: string;
+          text: string;
+          address: string;
+          postalCode: string | null;
+          city: string | null;
+          latitude: number | null;
+          longitude: number | null;
+        } => item !== null,
+      );
 
     return NextResponse.json({ suggestions });
   } catch (error) {
     if (error instanceof Error && error.name !== "AbortError") {
-      console.error("Adresseopslag fejlede:", error);
+      console.error("DAWA autocomplete kunne ikke hentes:", error);
     }
 
-    // Fail-open: autocomplete må aldrig blokere manuel registrering.
+    // Fail-open: adresseopslag må aldrig stoppe brugeroprettelsen.
     return NextResponse.json({ suggestions: [] });
   } finally {
     clearTimeout(timeout);

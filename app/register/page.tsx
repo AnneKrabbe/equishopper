@@ -58,10 +58,8 @@ type RegisterForm = {
 
 type AddressSuggestion = {
   id: string;
-  type: "vejnavn" | "adgangsadresse" | "adresse";
   text: string;
-  displayText: string;
-  address: string | null;
+  address: string;
   postalCode: string | null;
   city: string | null;
   latitude: number | null;
@@ -274,24 +272,9 @@ export default function RegisterPage() {
   }
 
   function selectAddressSuggestion(suggestion: AddressSuggestion) {
-    // Vejnavn/adgangsadresse er mellemtrin i DAWA autocomplete.
-    // Vi sætter forslagets tekst i feltet og lader autocomplete fortsætte.
-    if (suggestion.type !== "adresse") {
-      setForm((current) => ({
-        ...current,
-        address: suggestion.text,
-      }));
-      setSelectedLocation(null);
-      setAddressSuggestions([]);
-      setAddressMenuOpen(true);
-      setAddressSearchUnavailable(false);
-      setErrorMessage("");
-      return;
-    }
-
     setForm((current) => ({
       ...current,
-      address: suggestion.address ?? suggestion.text,
+      address: suggestion.address,
       postalCode: suggestion.postalCode ?? current.postalCode,
       city: suggestion.city ?? current.city,
     }));
