@@ -2,39 +2,78 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-type DawaAutocompleteItem = {
-  tekst?: string;
-  adresse?: {
-    id?: string;
-    x?: number;
-    y?: number;
-    postnr?: string;
-    postnrnavn?: string;
-  };
+type GSearchAddress = {
+  id?: string;
+  visningstekst?: string;
+  vejnavn?: string;
+  husnummer?: string;
+  etagebetegnelse?: string | null;
+  doerbetegnelse?: string | null;
+  postnummer?: string;
+  postnummernavn?: string;
+  geometri?: unknown;
 };
 
-function parseAddressText(text: string) {
-  const parts = text
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
+function getCoordinates(geometry: unknown): {
+  latitude: number | null;
+  longitude: number | null;
+} {
+  if (!geometry || typeof geometry !== "object") {
+    return { latitude: null, longitude: null };
+  }
 
-  const last = parts.at(-1) ?? "";
-  const postalMatch = last.match(/^(\d{4})\s+(.+)$/);
+  const value = geometry as {
+    coordinates?: unknown;
+    x?: unknown;
+    y?: unknown;
+  };
 
-  if (!postalMatch) {
+  // GeoJSON Point i EPSG:4326: [longitude, latitude]
+  if (
+    Array.isArray(value.coordinates) &&
+    typeof value.coordinates[0] === "number" &&
+    typeof value.coordinates[1] === "number"
+  ) {
     return {
-      address: text,
-      postalCode: null,
-      city: null,
+      longitude: value.coordinates[0],
+      latitude: value.coordinates[1],
     };
   }
 
-  return {
-    address: parts.slice(0, -1).join(", "),
-    postalCode: postalMatch[1],
-    city: postalMatch[2],
-  };
+  // Defensiv fallback hvis API'et serialiserer punktet som x/y.
+  if (typeof value.x === "number" && typeof value.y === "number") {
+    return {
+      longitude: value.x,
+      latitude: value.y,
+    };
+  }
+
+  return { latitude: null, longitude: null };
+}
+
+function buildStreetAddress(item: GSearchAddress) {
+  const street = [item.vejnavn, item.husnummer].filter(Boolean).join(" ");
+  const unit = [item.etagebetegnelse, item.doerbetegnelse]
+    .filter(Boolean)
+    .join(". ");
+
+  if (!street) {
+    const full = item.visningstekst?.trim() ?? "";
+    const postalCode = item.postnummer?.trim();
+
+    if (postalCode) {
+      const marker = `, ${postalCode}`;
+      const index = full.lastIndexOf(marker);
+
+      if (index > 0) {
+        return full.slice(0, index).trim();
+      }
+    }
+
+    return full;
+  }
+
+  return unit ? `${street}, ${unit}` : street;
 }
 
 export async function GET(request: NextRequest) {
@@ -46,13 +85,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ suggestions: [] });
   }
 
+  const token = process.env.DATAFORSYNINGEN_TOKEN;
+
+  if (!token) {
+    console.error(
+      "Adresseopslag: DATAFORSYNINGEN_TOKEN mangler i environment variables.",
+    );
+
+    return NextResponse.json(
+      {
+        suggestions: [],
+        error: "Adresseforslag er midlertidigt utilgængelige.",
+      },
+      { status: 503 },
+    );
+  }
+
   const params = new URLSearchParams({
     q: query,
-    per_side: "10",
+    limit: "10",
+    srid: "4326",
   });
 
+  // GSearch bruger ECQL til ekstra filtrering.
   if (/^\d{4}$/.test(postalCode)) {
-    params.set("postnr", postalCode);
+    params.set("filter", `postnummer='${postalCode}'`);
   }
 
   const controller = new AbortController();
@@ -60,49 +117,57 @@ export async function GET(request: NextRequest) {
 
   try {
     const response = await fetch(
-      `https://api.dataforsyningen.dk/adresser/autocomplete?${params.toString()}`,
+      `https://api.dataforsyningen.dk/rest/gsearch/v2.0/adresse?${params.toString()}`,
       {
         signal: controller.signal,
         cache: "no-store",
         headers: {
           Accept: "application/json",
+          token,
         },
       },
     );
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+
       console.error(
-        "DAWA autocomplete fejl:",
+        "GSearch adresseopslag fejl:",
         response.status,
         response.statusText,
+        body.slice(0, 500),
       );
 
-      return NextResponse.json({ suggestions: [] });
+      return NextResponse.json(
+        {
+          suggestions: [],
+          error: "Adresseforslag er midlertidigt utilgængelige.",
+        },
+        { status: 503 },
+      );
     }
 
-    const results = (await response.json()) as DawaAutocompleteItem[];
+    const results = (await response.json()) as GSearchAddress[];
 
     const suggestions = results
       .map((item, index) => {
-        const text = item.tekst?.trim();
+        const text = item.visningstekst?.trim();
+        const address = buildStreetAddress(item);
 
-        // Det eneste vi kræver for at vise et forslag er selve adresseteksten.
-        // Manglende id/koordinater/postnummer må ikke få et gyldigt forslag
-        // til at forsvinde fra dropdown-listen.
-        if (!text) return null;
+        if (!text || !address) {
+          return null;
+        }
 
-        const parsed = parseAddressText(text);
+        const coordinates = getCoordinates(item.geometri);
 
         return {
-          id: item.adresse?.id ?? `${index}-${text}`,
+          id: item.id ?? `${index}-${text}`,
           text,
-          address: parsed.address,
-          postalCode: item.adresse?.postnr ?? parsed.postalCode,
-          city: item.adresse?.postnrnavn ?? parsed.city,
-          latitude:
-            typeof item.adresse?.y === "number" ? item.adresse.y : null,
-          longitude:
-            typeof item.adresse?.x === "number" ? item.adresse.x : null,
+          address,
+          postalCode: item.postnummer?.trim() || null,
+          city: item.postnummernavn?.trim() || null,
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
         };
       })
       .filter(
@@ -122,11 +187,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ suggestions });
   } catch (error) {
     if (error instanceof Error && error.name !== "AbortError") {
-      console.error("DAWA autocomplete kunne ikke hentes:", error);
+      console.error("GSearch adresseopslag kunne ikke hentes:", error);
     }
 
-    // Fail-open: adresseopslag må aldrig stoppe brugeroprettelsen.
-    return NextResponse.json({ suggestions: [] });
+    return NextResponse.json(
+      {
+        suggestions: [],
+        error: "Adresseforslag er midlertidigt utilgængelige.",
+      },
+      { status: 503 },
+    );
   } finally {
     clearTimeout(timeout);
   }
