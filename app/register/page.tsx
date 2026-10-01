@@ -1,702 +1,1462 @@
 "use client";
 
+
+
 import {
+
   ChangeEvent,
+
   FormEvent,
+
   ReactNode,
+
+  useEffect,
+
   useRef,
+
   useState,
+
 } from "react";
+
 import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 
+
+
 import Header from "@/components/home/Header";
+
 import { supabase } from "@/lib/supabase";
 
+
+
 type RegisterForm = {
+
   fullName: string;
+
   username: string;
+
   email: string;
+
   password: string;
+
   confirmPassword: string;
+
   phone: string;
+
+  address: string;
+
+  postalCode: string;
+
+  city: string;
+
+  acceptedTerms: boolean;
+
+};
+
+
+
+type AddressSuggestion = {
+  id: string;
+  text: string;
   address: string;
   postalCode: string;
   city: string;
-  acceptedTerms: boolean;
+  latitude: number | null;
+  longitude: number | null;
 };
 
-type DawaAddress = {
-  x?: number;
-  y?: number;
-  postnr?: string;
-  postnrnavn?: string;
+type SelectedLocation = {
+  latitude: number;
+  longitude: number;
 };
+
+
 
 const initialForm: RegisterForm = {
+
   fullName: "",
+
   username: "",
+
   email: "",
+
   password: "",
+
   confirmPassword: "",
+
   phone: "",
+
   address: "",
+
   postalCode: "",
+
   city: "",
+
   acceptedTerms: false,
+
 };
 
+
+
 export default function RegisterPage() {
+
   const router = useRouter();
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [form, setForm] = useState<RegisterForm>(initialForm);
+
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
 
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressSearchLoading, setAddressSearchLoading] = useState(false);
+  const [addressSearchUnavailable, setAddressSearchUnavailable] = useState(false);
+  const [addressMenuOpen, setAddressMenuOpen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+
+
+
   function updateField<K extends keyof RegisterForm>(
+
     field: K,
+
     value: RegisterForm[K]
+
   ) {
+
     setForm((current) => ({ ...current, [field]: value }));
+
     setErrorMessage("");
+
   }
 
+
+
   function handleAvatarSelection(event: ChangeEvent<HTMLInputElement>) {
+
     const file = event.target.files?.[0];
+
+
 
     if (!file) return;
 
+
+
     setErrorMessage("");
+
+
 
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 
+
+
     if (!allowedTypes.includes(file.type)) {
+
       setErrorMessage("Profilbilledet skal være JPG, PNG eller WebP.");
+
       event.target.value = "";
+
       return;
+
     }
 
+
+
     if (file.size > 5 * 1024 * 1024) {
+
       setErrorMessage("Profilbilledet må højst fylde 5 MB.");
+
       event.target.value = "";
+
       return;
+
     }
+
+
 
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
 
+
+
     setAvatarFile(file);
+
     setAvatarPreview(URL.createObjectURL(file));
+
   }
 
-  async function findCoordinates() {
-    const address = form.address.trim();
-    const postalCode = form.postalCode.trim();
-    const city = form.city.trim();
 
-    const response = await fetch(
-      `https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(
-        `${address}, ${postalCode} ${city}`
-      )}&struktur=mini&per_side=1`
-    );
 
-    if (!response.ok) {
-      throw new Error("Adresseopslaget kunne ikke gennemføres.");
+  useEffect(() => {
+    const query = form.address.trim();
+
+    if (query.length < 3 || selectedLocation) {
+      setAddressSuggestions([]);
+      setAddressSearchLoading(false);
+      setAddressSearchUnavailable(false);
+      return;
     }
 
-    const results = (await response.json()) as DawaAddress[];
-    const match = results[0];
+    const controller = new AbortController();
 
-    if (!match || typeof match.x !== "number" || typeof match.y !== "number") {
-      throw new Error(
-        "Adressen blev ikke fundet. Kontrollér adresse, postnummer og by."
-      );
-    }
+    const timer = window.setTimeout(async () => {
+      setAddressSearchLoading(true);
+      setAddressSearchUnavailable(false);
 
-    return {
-      latitude: match.y,
-      longitude: match.x,
-      postalCode: match.postnr ?? postalCode,
-      city: match.postnrnavn ?? city,
+      try {
+        const params = new URLSearchParams({ q: query });
+
+        if (/^\d{4}$/.test(form.postalCode.trim())) {
+          params.set("postalCode", form.postalCode.trim());
+        }
+
+        const response = await fetch(`/api/address-search?${params.toString()}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Adresseopslag er midlertidigt utilgængeligt.");
+        }
+
+        const payload = (await response.json()) as {
+          suggestions?: AddressSuggestion[];
+        };
+
+        setAddressSuggestions(payload.suggestions ?? []);
+        setAddressMenuOpen(true);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        console.warn("Adresseforslag kunne ikke hentes:", error);
+        setAddressSuggestions([]);
+        setAddressSearchUnavailable(true);
+        setAddressMenuOpen(false);
+      } finally {
+        if (!controller.signal.aborted) setAddressSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
     };
+  }, [form.address, form.postalCode, selectedLocation]);
+
+  function handleAddressChange(value: string) {
+    setForm((current) => ({ ...current, address: value }));
+    setSelectedLocation(null);
+    setAddressMenuOpen(true);
+    setErrorMessage("");
+  }
+
+  function handlePostalCodeChange(value: string) {
+    setForm((current) => ({
+      ...current,
+      postalCode: value.replace(/\D/g, "").slice(0, 4),
+    }));
+    setSelectedLocation(null);
+    setErrorMessage("");
+  }
+
+  function handleCityChange(value: string) {
+    setForm((current) => ({ ...current, city: value }));
+    setSelectedLocation(null);
+    setErrorMessage("");
+  }
+
+  function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    setForm((current) => ({
+      ...current,
+      address: suggestion.address,
+      postalCode: suggestion.postalCode,
+      city: suggestion.city,
+    }));
+
+    if (
+      typeof suggestion.latitude === "number" &&
+      typeof suggestion.longitude === "number"
+    ) {
+      setSelectedLocation({
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+      });
+    } else {
+      setSelectedLocation(null);
+    }
+
+    setAddressSuggestions([]);
+    setAddressMenuOpen(false);
+    setAddressSearchUnavailable(false);
+    setErrorMessage("");
   }
 
   async function uploadAvatar(userId: string) {
+
     if (!avatarFile) return null;
 
+
+
     const extension = avatarFile.name.split(".").pop()?.toLowerCase() || "jpg";
+
     const filePath = `${userId}/avatar-${Date.now()}.${extension}`;
 
+
+
     const { error: uploadError } = await supabase.storage
+
       .from("avatar")
+
       .upload(filePath, avatarFile, {
+
         cacheControl: "3600",
+
         upsert: false,
+
         contentType: avatarFile.type,
+
       });
+
+
 
     if (uploadError) throw uploadError;
 
+
+
     const {
+
       data: { publicUrl },
+
     } = supabase.storage.from("avatar").getPublicUrl(filePath);
 
+
+
     return publicUrl;
+
   }
 
+
+
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
+
     event.preventDefault();
+
     setSaving(true);
+
     setErrorMessage("");
 
+
+
     try {
+
       const fullName = form.fullName.trim();
+
       const email = form.email.trim().toLowerCase();
+
       const username = form.username.trim().toLowerCase();
 
+
+
       if (!fullName) throw new Error("Du skal indtaste dit fulde navn.");
+
       if (!username) throw new Error("Du skal vælge et brugernavn.");
 
+
+
       if (!/^[a-z0-9æøå_-]+$/i.test(username)) {
+
         throw new Error(
+
           "Brugernavnet må kun indeholde bogstaver, tal, bindestreg og underscore."
+
         );
+
       }
+
+
 
       if (!email) throw new Error("Du skal indtaste din emailadresse.");
 
+
+
       if (form.password.length < 8) {
+
         throw new Error("Adgangskoden skal være på mindst 8 tegn.");
+
       }
+
+
 
       if (form.password !== form.confirmPassword) {
+
         throw new Error("De to adgangskoder er ikke ens.");
+
       }
+
+
 
       if (!form.acceptedTerms) {
+
         throw new Error("Du skal acceptere handelsbetingelserne.");
+
       }
 
-      if (!/^\d{4}$/.test(form.postalCode.trim())) {
+
+
+      if (!form.address.trim()) {
+      throw new Error("Du skal indtaste din adresse.");
+    }
+
+    if (!/^\d{4}$/.test(form.postalCode.trim())) {
+
         throw new Error("Postnummeret skal bestå af fire tal.");
+
       }
+    if (!form.city.trim()) {
+      throw new Error("Du skal indtaste din by.");
+    }
 
-      const location = await findCoordinates();
+    const profileMetadata = {
+      full_name: fullName,
+      username,
+      phone: form.phone.trim() || null,
+      address: form.address.trim(),
+      postal_code: form.postalCode.trim(),
+      city: form.city.trim(),
+      ...(selectedLocation
+        ? {
+            latitude: selectedLocation.latitude,
+            longitude: selectedLocation.longitude,
+          }
+        : {}),
+      location_visibility: "city",
+    };
 
-      const profileMetadata = {
-        full_name: fullName,
-        username,
-        phone: form.phone.trim() || null,
-        address: form.address.trim(),
-        postal_code: location.postalCode,
-        city: location.city,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        location_visibility: "city",
-      };
+
 
     const { data, error: signUpError } = await supabase.auth.signUp({
+
   email,
+
   password: form.password,
+
   options: {
+
     emailRedirectTo: `${window.location.origin}/login?confirmed=true`,
+
     data: profileMetadata,
+
   },
+
 });
 
+
+
 if (signUpError) {
+
   const errorCode =
+
     "code" in signUpError ? signUpError.code : "";
 
+
+
   const normalizedMessage =
+
     signUpError.message.toLowerCase();
 
+
+
   if (
+
     errorCode === "user_already_exists" ||
+
     errorCode === "email_exists" ||
+
     normalizedMessage.includes("already registered") ||
+
     normalizedMessage.includes("already exists")
+
   ) {
+
     throw new Error(
+
       "Der findes allerede en bruger med denne email. Log ind eller vælg Glemt adgangskode."
+
     );
+
   }
 
+
+
   throw signUpError;
+
 }
+
+
 
 if (!data.user) {
+
   throw new Error("Brugeren kunne ikke oprettes.");
+
 }
+
+
 
 /*
+
  * Når emailbekræftelse er aktiveret, kan Supabase returnere
+
  * et obfuskeret user-resultat ved gentagen signup med en
+
  * allerede registreret email. Et sådant resultat har ingen
+
  * identities.
+
  */
+
 if (
+
   !data.session &&
+
   Array.isArray(data.user.identities) &&
+
   data.user.identities.length === 0
+
 ) {
+
   throw new Error(
+
     "Der findes allerede en bruger med denne email. Log ind eller vælg Glemt adgangskode."
+
   );
+
 }
 
+
+
       // Hvis emailbekræftelse er slået fra, findes der straks en session,
+
       // og profilen samt profilbilledet kan gemmes direkte fra klienten.
+
       if (data.session) {
+
         const avatarUrl = await uploadAvatar(data.user.id);
 
+
+
         const { error: profileError } = await supabase.from("profiles").upsert(
+
           {
+
             id: data.user.id,
+
             ...profileMetadata,
+
             avatar_url: avatarUrl,
+
           },
+
           { onConflict: "id" }
+
         );
 
+
+
         if (profileError) {
+
           if (profileError.code === "23505") {
+
             throw new Error("Brugernavnet er allerede taget.");
+
           }
+
           throw profileError;
+
         }
 
+
+
         router.replace("/");
+
         router.refresh();
+
         return;
+
       }
 
+
+
       // Ved emailbekræftelse oprettes profilrækken via databasen ud fra
+
       // user_metadata. Se den tilhørende SQL-trigger.
+
       const query = new URLSearchParams({ email });
+
+
 
       if (avatarFile) query.set("avatar", "pending");
 
+
+
       router.replace(`/check-email?${query.toString()}`);
+
     } catch (error) {
+
       console.error("Kunne ikke oprette bruger:", error);
+
       setErrorMessage(
+
         error instanceof Error ? error.message : "Brugeren kunne ikke oprettes."
+
       );
+
     } finally {
+
       setSaving(false);
+
     }
+
   }
 
+
+
   const initials =
+
     form.fullName
+
       .split(" ")
+
       .filter(Boolean)
+
       .slice(0, 2)
+
       .map((part) => part[0]?.toUpperCase())
+
       .join("") || "E";
 
+
+
   return (
+
     <>
+
       <Header />
 
+
+
       <main className="min-h-screen bg-[#f8f5ee]">
+
         <section className="bg-[#063f32] px-4 pb-20 pt-36 sm:px-6 sm:pb-24 sm:pt-40 lg:px-8">
+
           <div className="mx-auto w-full max-w-4xl">
+
             <p className="text-sm font-semibold uppercase tracking-[0.32em] text-[#d4af37]">
+
               Bliv en del af Equishopper
+
             </p>
+
+
 
             <h1 className="mt-5 max-w-3xl font-serif text-5xl leading-[1.05] text-white sm:text-6xl lg:text-7xl">
+
               Opret din bruger
+
             </h1>
 
+
+
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70 sm:text-xl">
+
               Udfyld dine oplysninger, så du er klar til at købe og sælge.
+
             </p>
+
           </div>
+
         </section>
+
+
 
         <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+
           <div className="mx-auto w-full max-w-4xl">
+
             <form onSubmit={handleRegister} className="space-y-6">
+
               <section className="overflow-hidden rounded-[30px] border border-[#e7e1d7] bg-white shadow-[0_18px_60px_rgba(35,45,40,0.07)]">
+
                 <div className="bg-gradient-to-br from-[#f2f6f1] to-white p-6 sm:p-8">
+
                   <div className="flex flex-col gap-7 sm:flex-row sm:items-center">
+
                     <div className="relative shrink-0 self-start sm:self-auto">
+
                       <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-[6px] border-white bg-[#dce7de] shadow-xl sm:h-40 sm:w-40">
+
                         {avatarPreview ? (
+
                           <img
+
                             src={avatarPreview}
+
                             alt="Forhåndsvisning af profilbillede"
+
                             className="h-full w-full object-cover"
+
                           />
+
                         ) : (
+
                           <span className="text-4xl font-bold text-[#063f32]">
+
                             {initials}
+
                           </span>
+
                         )}
+
                       </div>
 
+
+
                       <button
+
                         type="button"
+
                         aria-label="Vælg profilbillede"
+
                         onClick={() => fileInputRef.current?.click()}
+
                         className="absolute bottom-1 right-1 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-[#063f32] text-white shadow-lg transition hover:scale-105 hover:bg-[#0b5a47]"
+
                       >
+
                         <CameraIcon />
+
                       </button>
 
+
+
                       <input
+
                         ref={fileInputRef}
+
                         type="file"
+
                         accept="image/jpeg,image/png,image/webp"
+
                         onChange={handleAvatarSelection}
+
                         className="hidden"
+
                       />
+
                     </div>
+
+
 
                     <div className="min-w-0 flex-1">
+
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d4af37]">
+
                         Din profil
+
                       </p>
+
+
 
                       <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-400">
+
                         Forhåndsvisning
+
                       </p>
+
+
 
                       <h2 className="mt-2 font-serif text-3xl font-bold text-[#063f32]">
+
                         {form.fullName || "Dit navn vises her"}
+
                       </h2>
 
+
+
                       <p className="mt-1 text-[#0b5a47]">
+
                         {form.username
+
                           ? form.username
+
                           : "Dit brugernavn vises her"}
+
                       </p>
+
+
 
                       <p className="mt-3 max-w-md text-sm leading-6 text-stone-500">
+
                         Udfyld navn og brugernavn i felterne under
+
                         Kontooplysninger.
+
                       </p>
+
+
 
                       <button
+
                         type="button"
+
                         onClick={() => fileInputRef.current?.click()}
+
                         className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#0b5a47] px-5 py-2.5 text-sm font-semibold text-[#063f32] transition hover:bg-[#edf4ef]"
+
                       >
+
                         <CameraIcon />
+
                         Vælg profilbillede
+
                       </button>
 
+
+
                       <p className="mt-3 text-sm text-stone-500">
+
                         Valgfrit. JPG, PNG eller WebP, højst 5 MB.
+
                       </p>
+
                     </div>
+
                   </div>
+
                 </div>
+
               </section>
+
+
 
               <FormSection title="Kontooplysninger">
+
                 <div className="grid gap-5 sm:grid-cols-2">
+
                   <FormField label="Dit fulde navn" required>
+
                     <input
+
                       required
+
                       type="text"
+
                       autoComplete="name"
+
                       value={form.fullName}
+
                       onChange={(event) =>
+
                         updateField("fullName", event.target.value)
+
                       }
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
+
 
                   <FormField label="Vælg dit brugernavn" required>
+
                     <div className="relative">
-                      
+
+
 
                       <input
+
                         required
+
                         type="text"
+
                         name="equishopper-public-username"
+
                         autoComplete="off"
+
                         autoCapitalize="none"
+
                         spellCheck={false}
+
                         pattern="[A-Za-z0-9ÆØÅæøå_-]+"
+
                         title="Brugernavnet må kun indeholde bogstaver, tal, bindestreg og underscore."
+
                         value={form.username}
+
                         onChange={(event) =>
+
                           updateField(
+
                             "username",
+
                             event.target.value.replace(/[^a-zA-Z0-9ÆØÅæøå_-]/g, "")
+
                           )
+
                         }
+
                         placeholder="fx stinemaria"
+
                         className={inputClassName}
+
                       />
+
                       <p className="mt-2 text-xs leading-5 text-stone-500">
+
                         Dit offentlige brugernavn. Brug kun bogstaver, tal,
+
                         bindestreg eller underscore.
+
                       </p>
+
                     </div>
+
                   </FormField>
 
+
+
                   <FormField
+
                     label="Email"
+
                     required
+
                     className="sm:col-span-2"
+
                   >
+
                     <input
+
                       required
+
                       type="email"
+
                       autoComplete="email"
+
                       value={form.email}
+
                       onChange={(event) =>
+
                         updateField("email", event.target.value)
+
                       }
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
+
 
                   <FormField label="Adgangskode" required>
+
                     <input
+
                       required
+
                       type="password"
+
                       minLength={8}
+
                       autoComplete="new-password"
+
                       value={form.password}
+
                       onChange={(event) =>
+
                         updateField("password", event.target.value)
+
                       }
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
+
 
                   <FormField label="Gentag adgangskode" required>
+
                     <input
+
                       required
+
                       type="password"
+
                       minLength={8}
+
                       autoComplete="new-password"
+
                       value={form.confirmPassword}
+
                       onChange={(event) =>
+
                         updateField("confirmPassword", event.target.value)
+
                       }
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
 
+
+
                   <FormField
+
                     label="Telefonnummer"
+
                     className="sm:col-span-2"
+
                   >
+
                     <input
+
                       type="tel"
+
                       autoComplete="tel"
+
                       value={form.phone}
+
                       onChange={(event) =>
+
                         updateField("phone", event.target.value)
+
                       }
+
                       placeholder="+45 12 34 56 78"
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
                 </div>
+
               </FormSection>
+
+
 
               <FormSection
+
                 title="Adresse og lokation"
+
                 description="Din præcise adresse vises ikke offentligt. Andre brugere ser kun dit postnummer og din by. Adressen bruges til at beregne afstand til annoncer."
+
               >
+
                 <div className="grid gap-5 sm:grid-cols-2">
+
                   <FormField
+
                     label="Adresse"
+
                     required
+
                     className="sm:col-span-2"
+
                   >
+
+                    <div className="relative">
                     <input
                       required
                       type="text"
-                      autoComplete="street-address"
+                      autoComplete="off"
                       value={form.address}
-                      onChange={(event) =>
-                        updateField("address", event.target.value)
-                      }
-                      placeholder="Ridevej 12"
+                      onChange={(event) => handleAddressChange(event.target.value)}
+                      onFocus={() => setAddressMenuOpen(true)}
+                      onBlur={() => {
+                        window.setTimeout(() => setAddressMenuOpen(false), 150);
+                      }}
+                      placeholder="Begynd at skrive din adresse"
                       className={inputClassName}
+                      aria-autocomplete="list"
+                      aria-expanded={addressMenuOpen && addressSuggestions.length > 0}
                     />
+
+                    {addressSearchLoading && (
+                      <p className="mt-2 text-xs text-stone-500">
+                        Søger efter adresser...
+                      </p>
+                    )}
+
+                    {addressSearchUnavailable && (
+                      <p className="mt-2 text-xs leading-5 text-stone-500">
+                        Adresseforslag er midlertidigt utilgængelige. Du kan stadig
+                        skrive adresse, postnummer og by manuelt og oprette din bruger.
+                      </p>
+                    )}
+
+                    {addressMenuOpen && addressSuggestions.length > 0 && (
+                      <div
+                        role="listbox"
+                        className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-2xl"
+                      >
+                        {addressSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            role="option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectAddressSuggestion(suggestion)}
+                            className="block w-full rounded-xl px-4 py-3 text-left text-sm text-stone-700 transition hover:bg-[#edf4ef]"
+                          >
+                            {suggestion.text}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   </FormField>
+
+
 
                   <FormField label="Postnummer" required>
+
                     <input
+
                       required
+
                       type="text"
+
                       inputMode="numeric"
+
                       autoComplete="postal-code"
+
                       maxLength={4}
+
                       value={form.postalCode}
-                      onChange={(event) =>
-                        updateField(
-                          "postalCode",
-                          event.target.value.replace(/\D/g, "").slice(0, 4)
-                        )
-                      }
+
+                      onChange={(event) => handlePostalCodeChange(event.target.value)}
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
+
 
                   <FormField label="By" required>
+
                     <input
+
                       required
+
                       type="text"
+
                       autoComplete="address-level2"
+
                       value={form.city}
-                      onChange={(event) =>
-                        updateField("city", event.target.value)
-                      }
+
+                      onChange={(event) => handleCityChange(event.target.value)}
+
                       className={inputClassName}
+
                     />
+
                   </FormField>
+
                 </div>
+
               </FormSection>
 
+
+
               <section className="rounded-[26px] border border-[#e7e1d7] bg-white p-5 shadow-[0_16px_50px_rgba(35,45,40,0.06)] sm:p-6">
+
                 <label className="flex cursor-pointer items-start gap-3">
+
                   <input
+
                     required
+
                     type="checkbox"
+
                     checked={form.acceptedTerms}
+
                     onChange={(event) =>
+
                       updateField("acceptedTerms", event.target.checked)
+
                     }
+
                     className="mt-1 h-5 w-5 rounded border-stone-300 text-[#063f32] accent-[#063f32] focus:ring-[#0b5a47]"
+
                   />
 
+
+
 <span className="text-sm leading-6 text-stone-600">
+
   Jeg accepterer Equishoppers{" "}
+
   <Link
+
     href="/handelsbetingelser"
+
     target="_blank"
+
     rel="noopener noreferrer"
+
     className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
+
   >
+
     handelsbetingelser
+
   </Link>{" "}
+
   og har læst{" "}
+
   <Link
+
     href="/privatlivspolitik"
+
     target="_blank"
+
     rel="noopener noreferrer"
+
     className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
+
   >
+
     privatlivspolitikken
+
   </Link>
+
   .
+
 </span>
 
+
+
                 </label>
+
               </section>
 
+
+
               {errorMessage && (
+
                 <div
+
                   role="alert"
+
                   className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+
                 >
+
                   {errorMessage}
+
                 </div>
+
               )}
 
+
+
               <div className="flex flex-col-reverse gap-3 rounded-[26px] border border-[#e7e1d7] bg-white p-4 shadow-[0_16px_50px_rgba(35,45,40,0.06)] sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                <button
-                  type="button"
-                  onClick={() => router.push("/login")}
-                  className="rounded-full border border-stone-300 px-6 py-3 font-semibold text-stone-700 transition hover:bg-stone-50"
-                >
-                  Tilbage til login
-                </button>
 
                 <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-[#d4af37] px-8 py-3.5 font-semibold text-[#063f32] shadow-lg shadow-[#063f32]/10 transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+
+                  type="button"
+
+                  onClick={() => router.push("/login")}
+
+                  className="rounded-full border border-stone-300 px-6 py-3 font-semibold text-stone-700 transition hover:bg-stone-50"
+
                 >
-                  <UserPlusIcon />
-                  {saving ? "Opretter bruger..." : "Opret bruger"}
+
+                  Tilbage til login
+
                 </button>
+
+
+
+                <button
+
+                  type="submit"
+
+                  disabled={saving}
+
+                  className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-[#d4af37] px-8 py-3.5 font-semibold text-[#063f32] shadow-lg shadow-[#063f32]/10 transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+
+                >
+
+                  <UserPlusIcon />
+
+                  {saving ? "Opretter bruger..." : "Opret bruger"}
+
+                </button>
+
               </div>
+
             </form>
+
           </div>
+
         </section>
+
       </main>
+
     </>
+
   );
+
 }
+
+
 
 const inputClassName =
+
   "w-full rounded-2xl border border-stone-300 bg-white px-4 py-3.5 text-stone-800 outline-none transition placeholder:text-stone-400 focus:border-[#0b5a47] focus:ring-4 focus:ring-[#0b5a47]/10";
 
+
+
 type FormSectionProps = {
+
   title: string;
+
   description?: string;
+
   children: ReactNode;
+
 };
+
+
 
 function FormSection({ title, description, children }: FormSectionProps) {
+
   return (
+
     <section className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.06)] sm:p-8">
+
       <div className="mb-7">
+
         <h2 className="font-serif text-2xl font-bold text-[#063f32]">{title}</h2>
+
         {description && (
+
           <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+
             {description}
+
           </p>
+
         )}
+
       </div>
+
       {children}
+
     </section>
+
   );
+
 }
+
+
 
 type FormFieldProps = {
+
   label: string;
+
   required?: boolean;
+
   className?: string;
+
   children: ReactNode;
+
 };
 
+
+
 function FormField({
+
   label,
+
   required,
+
   className = "",
+
   children,
+
 }: FormFieldProps) {
+
   return (
+
     <label className={`block ${className}`}>
+
       <span className="mb-2 block text-sm font-semibold text-stone-700">
+
         {label}
+
         {required && <span className="ml-1 text-[#0b5a47]">*</span>}
+
       </span>
+
       {children}
+
     </label>
+
   );
+
 }
+
+
 
 function CameraIcon() {
+
   return (
+
     <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+
       <path d="M4 7h3l1.5-2h7L17 7h3v12H4V7Z" />
+
       <circle cx="12" cy="13" r="4" />
+
     </svg>
+
   );
+
 }
 
+
+
 function UserPlusIcon() {
+
   return (
+
     <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+
       <circle cx="9" cy="8" r="4" />
+
       <path d="M2 21c.7-4.2 3-6.3 7-6.3 2.2 0 3.9.6 5.1 1.9M18 8v6M15 11h6" />
+
     </svg>
+
   );
+
 }
