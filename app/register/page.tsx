@@ -1122,12 +1122,7 @@ if (
                             onClick={() => selectAddressSuggestion(suggestion)}
                             className="block w-full rounded-xl px-4 py-3 text-left text-sm text-stone-700 transition hover:bg-[#edf4ef]"
                           >
-                            <span className="block">{suggestion.displayText}</span>
-                            {suggestion.type !== "adresse" && (
-                              <span className="mt-1 block text-xs text-stone-400">
-                                Vælg for at fortsætte
-                              </span>
-                            )}
+                            <span className="block">{suggestion.text}</span>
                           </button>
                         ))}
                       </div>
