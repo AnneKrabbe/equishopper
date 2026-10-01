@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 
   const params = new URLSearchParams({
     q: query,
-    limit: "10",
+    limit: "20",
     srid: "4326",
   });
 
