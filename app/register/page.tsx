@@ -58,10 +58,12 @@ type RegisterForm = {
 
 type AddressSuggestion = {
   id: string;
+  type: "vejnavn" | "adgangsadresse" | "adresse";
   text: string;
-  address: string;
-  postalCode: string;
-  city: string;
+  displayText: string;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -272,11 +274,26 @@ export default function RegisterPage() {
   }
 
   function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    // Vejnavn/adgangsadresse er mellemtrin i DAWA autocomplete.
+    // Vi sætter forslagets tekst i feltet og lader autocomplete fortsætte.
+    if (suggestion.type !== "adresse") {
+      setForm((current) => ({
+        ...current,
+        address: suggestion.text,
+      }));
+      setSelectedLocation(null);
+      setAddressSuggestions([]);
+      setAddressMenuOpen(true);
+      setAddressSearchUnavailable(false);
+      setErrorMessage("");
+      return;
+    }
+
     setForm((current) => ({
       ...current,
-      address: suggestion.address,
-      postalCode: suggestion.postalCode,
-      city: suggestion.city,
+      address: suggestion.address ?? suggestion.text,
+      postalCode: suggestion.postalCode ?? current.postalCode,
+      city: suggestion.city ?? current.city,
     }));
 
     if (
@@ -1122,7 +1139,12 @@ if (
                             onClick={() => selectAddressSuggestion(suggestion)}
                             className="block w-full rounded-xl px-4 py-3 text-left text-sm text-stone-700 transition hover:bg-[#edf4ef]"
                           >
-                            {suggestion.text}
+                            <span className="block">{suggestion.displayText}</span>
+                            {suggestion.type !== "adresse" && (
+                              <span className="mt-1 block text-xs text-stone-400">
+                                Vælg for at fortsætte
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>
