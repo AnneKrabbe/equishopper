@@ -1023,119 +1023,57 @@ function resetCategoryFields(newMainCategory: string) {
 
 
   async function handleImages(files: FileList | null) {
-
     if (!files) return;
-
-
 
     const availableSlots = Math.max(0, 10 - imageItems.length);
 
-
-
     if (availableSlots === 0) {
-
       setMessage("Du kan højst uploade 10 billeder.");
-
       return;
-
     }
-
-
 
     const sourceFiles = Array.from(files)
-
-      .filter((file) => {
-        const lowerName = file.name.toLowerCase();
-
-        return (
-          file.type.startsWith("image/") ||
-          lowerName.endsWith(".heic") ||
-          lowerName.endsWith(".heif")
-        );
-      })
-
+      .filter((file) => file.type.startsWith("image/"))
       .slice(0, availableSlots);
 
-
-
     if (sourceFiles.length === 0) {
-
       setMessage("Vælg mindst ét gyldigt billede.");
-
       return;
-
     }
 
-
-
     setIsProcessingImages(true);
-
     setMessage("");
 
-
-
     try {
-
       const selectedImages = await Promise.all(
-
         sourceFiles.map(async (file) => {
-
           const preparedFile = await prepareListingImage(file);
-
           const previewUrl = URL.createObjectURL(preparedFile);
-
-
 
           previewUrlsRef.current.push(previewUrl);
 
-
-
           return {
-
             id: crypto.randomUUID(),
-
             file: preparedFile,
-
             previewUrl,
-
           };
-
         }),
-
       );
-
-
 
       setImageItems((current) => [
-
         ...current,
-
         ...selectedImages,
-
       ]);
-
     } catch (error) {
-
       console.error("Billederne kunne ikke klargøres:", error);
 
-      const detail =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
       setMessage(
-        `Et eller flere billeder kunne ikke behandles. ${detail}`,
+        "Et eller flere billeder kunne ikke behandles. Prøv igen med JPG, PNG eller WebP.",
       );
-
     } finally {
-
       setIsProcessingImages(false);
-
     }
-
   }
-
-
 
   function removeImage(index: number) {
 
@@ -2248,7 +2186,7 @@ function resetCategoryFields(newMainCategory: string) {
 
                 multiple
 
-                accept="image/*,.heic,.heif"
+                accept="image/*"
 
                 className="hidden"
 
@@ -3073,213 +3011,92 @@ function resetCategoryFields(newMainCategory: string) {
 
 
 const LISTING_IMAGE_WIDTH = 1800;
-
 const LISTING_IMAGE_HEIGHT = 2250;
-
-// Vercel Functions har en request body-grænse på 4,5 MB.
-// Multipart/form-data har overhead, så billedfilen holdes tydeligt under loftet.
+const LISTING_IMAGE_QUALITY = 0.94;
 const LISTING_IMAGE_MAX_UPLOAD_BYTES = 3_500_000;
-const LISTING_IMAGE_QUALITY_STEPS = [0.9, 0.84, 0.78, 0.72, 0.66, 0.6];
-
-
 
 async function prepareListingImage(
-
   sourceFile: File,
-
 ): Promise<File> {
-
-  let fileToProcess = sourceFile;
-
-  const lowerName = sourceFile.name.toLowerCase();
-
-  const isHeic =
-    sourceFile.type.toLowerCase() === "image/heic" ||
-    sourceFile.type.toLowerCase() === "image/heif" ||
-    lowerName.endsWith(".heic") ||
-    lowerName.endsWith(".heif");
-
-  if (isHeic) {
-    const { default: heic2any } = await import("heic2any");
-
-    const converted = await heic2any({
-      blob: sourceFile,
-      toType: "image/jpeg",
-      quality: 0.92,
-    });
-
-    const convertedBlob = Array.isArray(converted)
-      ? converted[0]
-      : converted;
-
-    const baseName =
-      sourceFile.name.replace(/\.[^.]+$/, "") ||
-      "annoncebillede";
-
-    fileToProcess = new File(
-      [convertedBlob],
-      `${baseName}.jpg`,
-      {
-        type: "image/jpeg",
-        lastModified: Date.now(),
-      },
-    );
-  }
-
-  const image = await loadImageSource(fileToProcess);
+  const image = await loadImageSource(sourceFile);
 
   try {
-
     const canvas = document.createElement("canvas");
-
     canvas.width = LISTING_IMAGE_WIDTH;
-
     canvas.height = LISTING_IMAGE_HEIGHT;
 
-
-
     const context = canvas.getContext("2d", {
-
       alpha: false,
-
     });
 
-
-
     if (!context) {
-
       throw new Error(
-
         "Browseren kunne ikke oprette billedcanvas.",
-
       );
-
     }
 
-
-
     context.fillStyle = "#f1ece2";
-
     context.fillRect(
-
       0,
-
       0,
-
       LISTING_IMAGE_WIDTH,
-
       LISTING_IMAGE_HEIGHT,
-
     );
-
-
 
     const scale = Math.min(
-
       LISTING_IMAGE_WIDTH / image.width,
-
       LISTING_IMAGE_HEIGHT / image.height,
-
     );
-
-
 
     const drawWidth = Math.max(
-
       1,
-
       Math.round(image.width * scale),
-
     );
-
     const drawHeight = Math.max(
-
       1,
-
       Math.round(image.height * scale),
-
     );
-
-
 
     const drawX = Math.round(
-
       (LISTING_IMAGE_WIDTH - drawWidth) / 2,
-
     );
-
     const drawY = Math.round(
-
       (LISTING_IMAGE_HEIGHT - drawHeight) / 2,
-
     );
-
-
 
     context.imageSmoothingEnabled = true;
-
     context.imageSmoothingQuality = "high";
 
-
-
     context.drawImage(
-
       image.source,
-
       drawX,
-
       drawY,
-
       drawWidth,
-
       drawHeight,
-
     );
 
-
-
-    const blob = await canvasToBlobUnderSize(
+    const blob = await canvasToBlob(
       canvas,
       "image/webp",
-      LISTING_IMAGE_QUALITY_STEPS,
-      LISTING_IMAGE_MAX_UPLOAD_BYTES,
+      LISTING_IMAGE_QUALITY,
     );
-
-
 
     const baseName =
-
       sourceFile.name.replace(/\.[^.]+$/, "") ||
-
       "annoncebillede";
 
-
-
     return new File(
-
       [blob],
-
       `${baseName}.webp`,
-
       {
-
         type: "image/webp",
-
         lastModified: Date.now(),
-
       },
-
     );
-
   } finally {
-
     image.close();
-
   }
-
 }
-
-
 
 async function loadImageSource(file: File): Promise<{
   source: CanvasImageSource;
@@ -3287,45 +3104,22 @@ async function loadImageSource(file: File): Promise<{
   height: number;
   close: () => void;
 }> {
-  // createImageBitmap er hurtig, men enkelte mobilbrowsere kan fejle på
-  // ellers gyldige JPEG-filer (fx billeder gemt via Messenger).
-  // Derfor forsøger vi først createImageBitmap og falder derefter tilbage
-  // til browserens almindelige <img>-decoder via en object URL.
   if ("createImageBitmap" in window) {
-    try {
-      const bitmap = await createImageBitmap(file);
+    const bitmap = await createImageBitmap(file);
 
-      if (bitmap.width > 0 && bitmap.height > 0) {
-        return {
-          source: bitmap,
-          width: bitmap.width,
-          height: bitmap.height,
-          close: () => bitmap.close(),
-        };
-      }
-
-      bitmap.close();
-    } catch (bitmapError) {
-      console.warn(
-        "createImageBitmap kunne ikke afkode billedet. Prøver almindelig billeddecoder:",
-        bitmapError,
-      );
-    }
+    return {
+      source: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      close: () => bitmap.close(),
+    };
   }
 
   const objectUrl = URL.createObjectURL(file);
 
   try {
-    const imageElement = await loadHtmlImage(objectUrl);
-
-    if (
-      !imageElement.naturalWidth ||
-      !imageElement.naturalHeight
-    ) {
-      throw new Error(
-        "Billedet blev indlæst uden gyldige dimensioner.",
-      );
-    }
+    const imageElement =
+      await loadHtmlImage(objectUrl);
 
     return {
       source: imageElement,
@@ -3335,128 +3129,48 @@ async function loadImageSource(file: File): Promise<{
     };
   } catch (error) {
     URL.revokeObjectURL(objectUrl);
-
-    const detail =
-      error instanceof Error
-        ? error.message
-        : String(error);
-
-    throw new Error(
-      `Billedet kunne ikke afkodes i browseren: ${detail}`,
-    );
+    throw error;
   }
 }
-
-
 
 function loadHtmlImage(
-
   source: string,
-
 ): Promise<HTMLImageElement> {
-
   return new Promise((resolve, reject) => {
-
     const image = new Image();
 
-
-
     image.onload = () => resolve(image);
-
     image.onerror = () =>
-
       reject(
-
         new Error("Billedet kunne ikke indlæses."),
-
       );
 
-
-
     image.src = source;
-
   });
-
 }
-
-
-
-async function canvasToBlobUnderSize(
-  canvas: HTMLCanvasElement,
-  type: string,
-  qualitySteps: number[],
-  maxBytes: number,
-): Promise<Blob> {
-  let smallestBlob: Blob | null = null;
-
-  for (const quality of qualitySteps) {
-    const blob = await canvasToBlob(canvas, type, quality);
-
-    if (!smallestBlob || blob.size < smallestBlob.size) {
-      smallestBlob = blob;
-    }
-
-    if (blob.size <= maxBytes) {
-      return blob;
-    }
-  }
-
-  if (smallestBlob && smallestBlob.size <= maxBytes) {
-    return smallestBlob;
-  }
-
-  throw new Error(
-    "Billedet kunne ikke komprimeres nok til en sikker upload. Prøv et andet billede.",
-  );
-}
-
-
 
 function canvasToBlob(
-
   canvas: HTMLCanvasElement,
-
   type: string,
-
   quality: number,
-
 ): Promise<Blob> {
-
   return new Promise((resolve, reject) => {
-
     canvas.toBlob(
-
       (blob) => {
-
         if (blob) {
-
           resolve(blob);
-
           return;
-
         }
 
-
-
         reject(
-
           new Error("Billedet kunne ikke gemmes."),
-
         );
-
       },
-
       type,
-
       quality,
-
     );
-
   });
-
 }
-
-
 
 function Field({
 
