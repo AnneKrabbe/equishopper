@@ -205,6 +205,12 @@ export default function AdminCampaignsPage() {
     }
   }
 
+  function selectCampaignUser(user: SearchUser) {
+    setSelectedUser(user);
+    setUserResults([]);
+    setUserQuery("");
+  }
+
   async function createCampaign(event: React.FormEvent) {
     event.preventDefault();
 
@@ -538,7 +544,10 @@ export default function AdminCampaignsPage() {
                 </Field>
 
                 {campaignType === "individual" && (
-                  <Field label="Bruger">
+                  <div className="block">
+                    <span className="mb-2 block text-sm font-semibold text-[#063f32]">
+                      Bruger
+                    </span>
                     {selectedUser ? (
                       <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#b9d5c8] bg-[#edf5f0] p-4">
                         <div className="min-w-0">
@@ -590,12 +599,12 @@ export default function AdminCampaignsPage() {
                                 <button
                                   key={user.id}
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedUser(user);
-                                    setUserResults([]);
-                                    setUserQuery("");
+                                  onPointerDown={(event) => {
+                                    event.preventDefault();
+                                    selectCampaignUser(user);
                                   }}
-                                  className="w-full rounded-xl px-3 py-3 text-left transition hover:bg-[#f5f3ee]"
+                                  onClick={() => selectCampaignUser(user)}
+                                  className="w-full touch-manipulation rounded-xl px-3 py-3 text-left transition hover:bg-[#f5f3ee]"
                                 >
                                   <p className="font-semibold text-[#063f32]">
                                     {formatUserName(user)}
@@ -610,7 +619,7 @@ export default function AdminCampaignsPage() {
                         )}
                       </div>
                     )}
-                  </Field>
+                  </div>
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
