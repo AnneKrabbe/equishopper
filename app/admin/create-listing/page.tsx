@@ -23,6 +23,7 @@ import {
 import { supabase } from "@/lib/supabase";
 
 import Header from "@/components/home/Header";
+import heic2any from "heic2any";
 
 import { HeartIcon as HeartIconOutline } from "@heroicons/react/24/outline";
 
@@ -1044,7 +1045,15 @@ function resetCategoryFields(newMainCategory: string) {
 
     const sourceFiles = Array.from(files)
 
-      .filter((file) => file.type.startsWith("image/"))
+      .filter((file) => {
+        const lowerName = file.name.toLowerCase();
+
+        return (
+          file.type.startsWith("image/") ||
+          lowerName.endsWith(".heic") ||
+          lowerName.endsWith(".heif")
+        );
+      })
 
       .slice(0, availableSlots);
 
@@ -1114,7 +1123,7 @@ function resetCategoryFields(newMainCategory: string) {
 
       setMessage(
 
-        "Et eller flere billeder kunne ikke behandles. Prøv igen med JPG, PNG eller WebP.",
+        "Et eller flere billeder kunne ikke behandles. Prøv igen med HEIC, HEIF, JPG, PNG eller WebP.",
 
       );
 
@@ -2157,7 +2166,7 @@ function resetCategoryFields(newMainCategory: string) {
 
                 multiple
 
-                accept="image/*"
+                accept="image/*,.heic,.heif"
 
                 className="hidden"
 
@@ -2997,9 +3006,42 @@ async function prepareListingImage(
 
 ): Promise<File> {
 
-  const image = await loadImageSource(sourceFile);
+  let fileToProcess = sourceFile;
 
+  const lowerName = sourceFile.name.toLowerCase();
 
+  const isHeic =
+    sourceFile.type.toLowerCase() === "image/heic" ||
+    sourceFile.type.toLowerCase() === "image/heif" ||
+    lowerName.endsWith(".heic") ||
+    lowerName.endsWith(".heif");
+
+  if (isHeic) {
+    const converted = await heic2any({
+      blob: sourceFile,
+      toType: "image/jpeg",
+      quality: 0.92,
+    });
+
+    const convertedBlob = Array.isArray(converted)
+      ? converted[0]
+      : converted;
+
+    const baseName =
+      sourceFile.name.replace(/\.[^.]+$/, "") ||
+      "annoncebillede";
+
+    fileToProcess = new File(
+      [convertedBlob],
+      `${baseName}.jpg`,
+      {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      },
+    );
+  }
+
+  const image = await loadImageSource(fileToProcess);
 
   try {
 
