@@ -23,7 +23,6 @@ import {
 import { supabase } from "@/lib/supabase";
 
 import Header from "@/components/home/Header";
-import heic2any from "heic2any";
 
 import { HeartIcon as HeartIconOutline } from "@heroicons/react/24/outline";
 
@@ -3017,6 +3016,8 @@ async function prepareListingImage(
     lowerName.endsWith(".heif");
 
   if (isHeic) {
+    const { default: heic2any } = await import("heic2any");
+
     const converted = await heic2any({
       blob: sourceFile,
       toType: "image/jpeg",
