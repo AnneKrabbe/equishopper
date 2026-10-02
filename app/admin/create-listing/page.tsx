@@ -1118,12 +1118,13 @@ function resetCategoryFields(newMainCategory: string) {
 
       console.error("Billederne kunne ikke klargøres:", error);
 
-
+      const detail =
+        error instanceof Error
+          ? error.message
+          : String(error);
 
       setMessage(
-
-        "Et eller flere billeder kunne ikke behandles. Prøv igen med HEIC, HEIF, JPG, PNG eller WebP.",
-
+        `Et eller flere billeder kunne ikke behandles. ${detail}`,
       );
 
     } finally {
@@ -3201,71 +3202,69 @@ async function prepareListingImage(
 
 
 async function loadImageSource(file: File): Promise<{
-
   source: CanvasImageSource;
-
   width: number;
-
   height: number;
-
   close: () => void;
-
 }> {
-
+  // createImageBitmap er hurtig, men enkelte mobilbrowsere kan fejle på
+  // ellers gyldige JPEG-filer (fx billeder gemt via Messenger).
+  // Derfor forsøger vi først createImageBitmap og falder derefter tilbage
+  // til browserens almindelige <img>-decoder via en object URL.
   if ("createImageBitmap" in window) {
+    try {
+      const bitmap = await createImageBitmap(file);
 
-    const bitmap = await createImageBitmap(file);
+      if (bitmap.width > 0 && bitmap.height > 0) {
+        return {
+          source: bitmap,
+          width: bitmap.width,
+          height: bitmap.height,
+          close: () => bitmap.close(),
+        };
+      }
 
-
-
-    return {
-
-      source: bitmap,
-
-      width: bitmap.width,
-
-      height: bitmap.height,
-
-      close: () => bitmap.close(),
-
-    };
-
+      bitmap.close();
+    } catch (bitmapError) {
+      console.warn(
+        "createImageBitmap kunne ikke afkode billedet. Prøver almindelig billeddecoder:",
+        bitmapError,
+      );
+    }
   }
-
-
 
   const objectUrl = URL.createObjectURL(file);
 
-
-
   try {
+    const imageElement = await loadHtmlImage(objectUrl);
 
-    const imageElement =
-
-      await loadHtmlImage(objectUrl);
-
-
+    if (
+      !imageElement.naturalWidth ||
+      !imageElement.naturalHeight
+    ) {
+      throw new Error(
+        "Billedet blev indlæst uden gyldige dimensioner.",
+      );
+    }
 
     return {
-
       source: imageElement,
-
       width: imageElement.naturalWidth,
-
       height: imageElement.naturalHeight,
-
       close: () => URL.revokeObjectURL(objectUrl),
-
     };
-
   } catch (error) {
-
     URL.revokeObjectURL(objectUrl);
 
-    throw error;
+    const detail =
+      error instanceof Error
+        ? error.message
+        : String(error);
 
+    throw new Error(
+      `Billedet kunne ikke afkodes i browseren: ${detail}`,
+    );
   }
-
 }
 
 
