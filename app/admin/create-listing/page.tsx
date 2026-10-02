@@ -252,6 +252,14 @@ export default function AdminCreateListingPage() {
   const [imageItems, setImageItems] = useState<ImageItem[]>([]);
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
+  const [imageDebug, setImageDebug] = useState<string[]>([]);
+
+  function addImageDebug(entry: string) {
+    setImageDebug((current) => [
+      ...current.slice(-11),
+      `${new Date().toLocaleTimeString("da-DK")} — ${entry}`,
+    ]);
+  }
 
   const [activePreviewImage, setActivePreviewImage] = useState(0);
 
@@ -1023,18 +1031,26 @@ function resetCategoryFields(newMainCategory: string) {
 
 
   async function handleImages(files: FileList | null) {
+    addImageDebug(files ? `handleImages modtog ${files.length} fil(er).` : "handleImages modtog ingen FileList.");
     if (!files) return;
 
     const availableSlots = Math.max(0, 10 - imageItems.length);
-
     if (availableSlots === 0) {
+      addImageDebug("Stoppet: der er allerede 10 billeder.");
       setMessage("Du kan højst uploade 10 billeder.");
       return;
     }
 
-    const sourceFiles = Array.from(files)
+    const allFiles = Array.from(files);
+    allFiles.forEach((file, index) => {
+      addImageDebug(`Fil ${index + 1}: "${file.name}" · type="${file.type || "(tom)"}" · ${Math.round(file.size / 1024)} KB`);
+    });
+
+    const sourceFiles = allFiles
       .filter((file) => file.type.startsWith("image/"))
       .slice(0, availableSlots);
+
+    addImageDebug(`${sourceFiles.length} fil(er) bestod image/*-filteret.`);
 
     if (sourceFiles.length === 0) {
       setMessage("Vælg mindst ét gyldigt billede.");
@@ -1043,15 +1059,16 @@ function resetCategoryFields(newMainCategory: string) {
 
     setIsProcessingImages(true);
     setMessage("");
+    addImageDebug("Starter billedbehandling.");
 
     try {
       const selectedImages = await Promise.all(
-        sourceFiles.map(async (file) => {
+        sourceFiles.map(async (file, index) => {
+          addImageDebug(`Klargør fil ${index + 1}...`);
           const preparedFile = await prepareListingImage(file);
+          addImageDebug(`Fil ${index + 1} klargjort: ${preparedFile.type || "(tom type)"} · ${Math.round(preparedFile.size / 1024)} KB`);
           const previewUrl = URL.createObjectURL(preparedFile);
-
           previewUrlsRef.current.push(previewUrl);
-
           return {
             id: crypto.randomUUID(),
             file: preparedFile,
@@ -1060,20 +1077,16 @@ function resetCategoryFields(newMainCategory: string) {
         }),
       );
 
-      setImageItems((current) => [
-        ...current,
-        ...selectedImages,
-      ]);
+      setImageItems((current) => [...current, ...selectedImages]);
+      addImageDebug(`SUCCESS: ${selectedImages.length} billede(r) lagt i imageItems.`);
     } catch (error) {
       console.error("Billederne kunne ikke klargøres:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Et eller flere billeder kunne ikke behandles. Prøv igen med JPG, PNG eller WebP.",
-      );
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      addImageDebug(`FEJL: ${detail}`);
+      setMessage(`Billedfejl: ${detail}`);
     } finally {
       setIsProcessingImages(false);
+      addImageDebug("Billedbehandling afsluttet.");
     }
   }
 
@@ -2201,11 +2214,38 @@ function resetCategoryFields(newMainCategory: string) {
                 }
 
                 onChange={(event) => {
-                  void handleImages(event.currentTarget.files);
+                  const files = event.currentTarget.files;
+                  addImageDebug(
+                    files
+                      ? `INPUT onChange blev udløst med ${files.length} fil(er).`
+                      : "INPUT onChange blev udløst uden FileList.",
+                  );
+                  void handleImages(files);
                   event.currentTarget.value = "";
                 }}
 
               />
+
+
+
+              <div className="mt-4 rounded-[18px] border border-amber-300 bg-amber-50 p-4 text-left text-xs leading-5 text-amber-950">
+                <div className="flex items-center justify-between gap-3">
+                  <strong>Billeddiagnose</strong>
+                  <button type="button" onClick={() => setImageDebug([])} className="underline">
+                    Ryd
+                  </button>
+                </div>
+                {imageDebug.length === 0 ? (
+                  <p className="mt-2">Ingen hændelser endnu. Vælg ét billede på mobilen.</p>
+                ) : (
+                  <div className="mt-2 space-y-1 break-words font-mono">
+                    {imageDebug.map((entry, index) => (
+                      <div key={`${index}-${entry}`}>{entry}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {imageItems.length > 0 ? (
 
                 <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -3152,14 +3192,8 @@ async function canvasToBlobUnderSize(
   qualitySteps: number[],
   maxBytes: number,
 ): Promise<Blob> {
-  let smallestBlob: Blob | null = null;
-
   for (const quality of qualitySteps) {
     const blob = await canvasToBlob(canvas, type, quality);
-
-    if (!smallestBlob || blob.size < smallestBlob.size) {
-      smallestBlob = blob;
-    }
 
     if (blob.size <= maxBytes) {
       return blob;
@@ -3167,7 +3201,7 @@ async function canvasToBlobUnderSize(
   }
 
   throw new Error(
-    `Billedet kunne ikke komprimeres nok til upload. Prøv et andet billede.`,
+    "Billedet kunne ikke komprimeres nok til upload. Prøv et andet billede.",
   );
 }
 
