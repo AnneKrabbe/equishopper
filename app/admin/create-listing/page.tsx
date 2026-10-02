@@ -733,18 +733,7 @@ function resetCategoryFields(newMainCategory: string) {
       }
 
       sessionAccessToken = session.access_token;
-
-      const oversizedImage = imageItems.find(
-        (item) => item.file.size > LISTING_IMAGE_MAX_UPLOAD_BYTES,
-      );
-
-      if (oversizedImage) {
-        throw new Error(
-          "Et billede er stadig for stort efter komprimering. Fjern billedet og vælg det igen.",
-        );
-      }
-
-      const categoryValue =
+const categoryValue =
         mainCategory === "Til hesten" ? groupName : mainCategory;
 
       const response = await fetch("/api/admin/listings", {
@@ -788,46 +777,45 @@ function resetCategoryFields(newMainCategory: string) {
       createdListingId = result.listingId;
 
       for (let index = 0; index < imageItems.length; index += 1) {
-        const imageItem = imageItems[index];
+        const file = imageItems[index].file;
+        const fileExtension = file.name.split(".").pop() || "jpg";
 
-        if (imageItem.file.size > LISTING_IMAGE_MAX_UPLOAD_BYTES) {
+        const safeExtension = fileExtension
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+
+        const filePath = `${result.listingId}/${Date.now()}-${index}.${safeExtension}`;
+
+        const { data: uploadData, error: uploadError } =
+          await supabase.storage
+            .from("listing-images")
+            .upload(filePath, file);
+
+        if (uploadError) {
           throw new Error(
-            `Billede ${index + 1} er for stort til upload efter komprimering.`,
+            `Annoncen blev oprettet, men et billede kunne ikke uploades: ${uploadError.message}`,
           );
         }
 
-        const formData = new FormData();
-        formData.append("listingId", result.listingId);
-        formData.append("sortOrder", String(index));
-        formData.append("image", imageItem.file);
+        const { data: publicUrlData } = supabase.storage
+          .from("listing-images")
+          .getPublicUrl(uploadData.path);
 
-        const imageResponse = await fetch("/api/admin/listings", {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: formData,
-        });
+        const { error: imageError } = await supabase
+          .from("listing_images")
+          .insert({
+            listing_id: result.listingId,
+            image_url: publicUrlData.publicUrl,
+            sort_order: index,
+          });
 
-        let imageResult: { error?: string } = {};
-
-        try {
-          imageResult = (await imageResponse.json()) as {
-            error?: string;
-          };
-        } catch {
-          // Vercel kan fx returnere et ikke-JSON-svar ved en platformfejl.
-        }
-
-        if (!imageResponse.ok) {
-          const statusDetail =
-            imageResponse.status === 413
-              ? "Billedet overskred serverens uploadgrænse."
-              : `Uploaden fejlede (HTTP ${imageResponse.status}).`;
+        if (imageError) {
+          await supabase.storage
+            .from("listing-images")
+            .remove([uploadData.path]);
 
           throw new Error(
-            imageResult.error ??
-              `Billede ${index + 1} kunne ikke uploades. ${statusDetail}`,
+            `Billedet blev uploadet, men kunne ikke knyttes til annoncen: ${imageError.message}`,
           );
         }
       }
@@ -1760,7 +1748,6 @@ function resetCategoryFields(newMainCategory: string) {
   );
 }
 
-const LISTING_IMAGE_MAX_UPLOAD_BYTES = 10_000_000;
 const LISTING_IMAGE_WIDTH = 1800;
 const LISTING_IMAGE_HEIGHT = 2250;
 const LISTING_IMAGE_QUALITY = 0.94;
