@@ -1274,7 +1274,20 @@ function resetCategoryFields(newMainCategory: string) {
       return;
     }
 
+    if (isProcessingImages) {
+      setMessage("Vent til billederne er færdigbehandlet.");
+      return;
+    }
+
+    if (imageItems.length === 0) {
+      setMessage("Tilføj mindst ét billede, før annoncen oprettes.");
+      return;
+    }
+
     setIsSubmitting(true);
+
+    let createdListingId: string | null = null;
+    let sessionAccessToken: string | null = null;
 
     try {
       const {
@@ -1284,6 +1297,18 @@ function resetCategoryFields(newMainCategory: string) {
 
       if (sessionError || !session) {
         throw new Error("Din session er udløbet. Log ind igen.");
+      }
+
+      sessionAccessToken = session.access_token;
+
+      const oversizedImage = imageItems.find(
+        (item) => item.file.size > LISTING_IMAGE_MAX_UPLOAD_BYTES,
+      );
+
+      if (oversizedImage) {
+        throw new Error(
+          "Et billede er stadig for stort efter komprimering. Fjern billedet og vælg det igen.",
+        );
       }
 
       const categoryValue =
@@ -1327,11 +1352,21 @@ function resetCategoryFields(newMainCategory: string) {
         throw new Error(result.error ?? "Annoncen kunne ikke oprettes.");
       }
 
+      createdListingId = result.listingId;
+
       for (let index = 0; index < imageItems.length; index += 1) {
+        const imageItem = imageItems[index];
+
+        if (imageItem.file.size > LISTING_IMAGE_MAX_UPLOAD_BYTES) {
+          throw new Error(
+            `Billede ${index + 1} er for stort til upload efter komprimering.`,
+          );
+        }
+
         const formData = new FormData();
         formData.append("listingId", result.listingId);
         formData.append("sortOrder", String(index));
-        formData.append("image", imageItems[index].file);
+        formData.append("image", imageItem.file);
 
         const imageResponse = await fetch("/api/admin/listings", {
           method: "PUT",
@@ -1341,28 +1376,75 @@ function resetCategoryFields(newMainCategory: string) {
           body: formData,
         });
 
-        const imageResult = (await imageResponse.json()) as {
-          error?: string;
-        };
+        let imageResult: { error?: string } = {};
+
+        try {
+          imageResult = (await imageResponse.json()) as {
+            error?: string;
+          };
+        } catch {
+          // Vercel kan fx returnere et ikke-JSON-svar ved en platformfejl.
+        }
 
         if (!imageResponse.ok) {
+          const statusDetail =
+            imageResponse.status === 413
+              ? "Billedet overskred serverens uploadgrænse."
+              : `Uploaden fejlede (HTTP ${imageResponse.status}).`;
+
           throw new Error(
             imageResult.error ??
-              `Annoncen blev oprettet, men billede ${index + 1} kunne ikke uploades.`,
+              `Billede ${index + 1} kunne ikke uploades. ${statusDetail}`,
           );
         }
       }
 
       window.location.href = `/listing/${result.listingId}`;
     } catch (error) {
-      const errorMessage =
+      const originalError =
         error instanceof Error ? error.message : "Der opstod en ukendt fejl.";
 
-      setMessage(errorMessage);
+      let cleanupSucceeded = true;
+
+      if (createdListingId && sessionAccessToken) {
+        try {
+          const cleanupResponse = await fetch(
+            `/api/admin/listings?listingId=${encodeURIComponent(createdListingId)}`,
+            {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${sessionAccessToken}`,
+              },
+            },
+          );
+
+          cleanupSucceeded = cleanupResponse.ok;
+
+          if (!cleanupResponse.ok) {
+            console.error(
+              "Rollback af den mislykkede annonce fejlede:",
+              await cleanupResponse.text(),
+            );
+          }
+        } catch (cleanupError) {
+          cleanupSucceeded = false;
+          console.error(
+            "Rollback af den mislykkede annonce fejlede:",
+            cleanupError,
+          );
+        }
+      }
+
+      setMessage(
+        createdListingId
+          ? cleanupSucceeded
+            ? `${originalError} Annoncen blev ikke gemt, og den mislykkede oprettelse er ryddet op.`
+            : `${originalError} Oprydningen fejlede også. Slet den nyoprettede annonce manuelt, før du prøver igen.`
+          : originalError,
+      );
       setIsSubmitting(false);
     }
   }
-
 
   if (adminLoading) {
     return (
@@ -2569,11 +2651,9 @@ function resetCategoryFields(newMainCategory: string) {
   type="submit"
 
   disabled={
-
     isSubmitting ||
-
-    isProcessingImages
-
+    isProcessingImages ||
+    imageItems.length === 0
   }
 
   className="inline-flex w-full shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#063f32] px-9 py-4 font-medium text-white transition hover:bg-[#052f26] disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
@@ -2996,7 +3076,10 @@ const LISTING_IMAGE_WIDTH = 1800;
 
 const LISTING_IMAGE_HEIGHT = 2250;
 
-const LISTING_IMAGE_QUALITY = 0.94;
+// Vercel Functions har en request body-grænse på 4,5 MB.
+// Multipart/form-data har overhead, så billedfilen holdes tydeligt under loftet.
+const LISTING_IMAGE_MAX_UPLOAD_BYTES = 3_500_000;
+const LISTING_IMAGE_QUALITY_STEPS = [0.9, 0.84, 0.78, 0.72, 0.66, 0.6];
 
 
 
@@ -3155,14 +3238,11 @@ async function prepareListingImage(
 
 
 
-    const blob = await canvasToBlob(
-
+    const blob = await canvasToBlobUnderSize(
       canvas,
-
       "image/webp",
-
-      LISTING_IMAGE_QUALITY,
-
+      LISTING_IMAGE_QUALITY_STEPS,
+      LISTING_IMAGE_MAX_UPLOAD_BYTES,
     );
 
 
@@ -3297,6 +3377,37 @@ function loadHtmlImage(
 
   });
 
+}
+
+
+
+async function canvasToBlobUnderSize(
+  canvas: HTMLCanvasElement,
+  type: string,
+  qualitySteps: number[],
+  maxBytes: number,
+): Promise<Blob> {
+  let smallestBlob: Blob | null = null;
+
+  for (const quality of qualitySteps) {
+    const blob = await canvasToBlob(canvas, type, quality);
+
+    if (!smallestBlob || blob.size < smallestBlob.size) {
+      smallestBlob = blob;
+    }
+
+    if (blob.size <= maxBytes) {
+      return blob;
+    }
+  }
+
+  if (smallestBlob && smallestBlob.size <= maxBytes) {
+    return smallestBlob;
+  }
+
+  throw new Error(
+    "Billedet kunne ikke komprimeres nok til en sikker upload. Prøv et andet billede.",
+  );
 }
 
 

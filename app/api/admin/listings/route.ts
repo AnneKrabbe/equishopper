@@ -318,3 +318,126 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const admin = await requireAdmin(request);
+
+    if ("error" in admin) {
+      return NextResponse.json(
+        { error: admin.error },
+        { status: admin.status },
+      );
+    }
+
+    const listingId = request.nextUrl.searchParams.get("listingId");
+
+    if (!listingId) {
+      return NextResponse.json(
+        { error: "Annonce-id mangler." },
+        { status: 400 },
+      );
+    }
+
+    const { data: listing, error: listingError } = await supabaseAdmin
+      .from("listings")
+      .select("id")
+      .eq("id", listingId)
+      .maybeSingle();
+
+    if (listingError) {
+      console.error("Annonce kunne ikke kontrolleres før rollback:", listingError);
+      return NextResponse.json(
+        { error: "Annoncen kunne ikke kontrolleres før oprydning." },
+        { status: 500 },
+      );
+    }
+
+    if (!listing) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const { data: storageFiles, error: storageListError } =
+      await supabaseAdmin.storage
+        .from("listing-images")
+        .list(listingId, { limit: 100 });
+
+    if (storageListError) {
+      console.error(
+        "Storage-filer kunne ikke findes under rollback:",
+        storageListError,
+      );
+      return NextResponse.json(
+        { error: "Billedfilerne kunne ikke ryddes op." },
+        { status: 500 },
+      );
+    }
+
+    const storagePaths = (storageFiles ?? [])
+      .filter((file) => file.name)
+      .map((file) => `${listingId}/${file.name}`);
+
+    if (storagePaths.length > 0) {
+      const { error: storageRemoveError } = await supabaseAdmin.storage
+        .from("listing-images")
+        .remove(storagePaths);
+
+      if (storageRemoveError) {
+        console.error(
+          "Storage-filer kunne ikke slettes under rollback:",
+          storageRemoveError,
+        );
+        return NextResponse.json(
+          { error: "Billedfilerne kunne ikke slettes under oprydning." },
+          { status: 500 },
+        );
+      }
+    }
+
+    const { error: imageRowsError } = await supabaseAdmin
+      .from("listing_images")
+      .delete()
+      .eq("listing_id", listingId);
+
+    if (imageRowsError) {
+      console.error(
+        "listing_images kunne ikke slettes under rollback:",
+        imageRowsError,
+      );
+      return NextResponse.json(
+        { error: "Billeddata kunne ikke ryddes op." },
+        { status: 500 },
+      );
+    }
+
+    const { error: listingDeleteError } = await supabaseAdmin
+      .from("listings")
+      .delete()
+      .eq("id", listingId);
+
+    if (listingDeleteError) {
+      console.error(
+        "Annonce kunne ikke slettes under rollback:",
+        listingDeleteError,
+      );
+      return NextResponse.json(
+        { error: "Den mislykkede annonce kunne ikke slettes." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("DELETE /api/admin/listings fejlede:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Der opstod en ukendt serverfejl.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
