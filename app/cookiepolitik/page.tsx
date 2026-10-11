@@ -1,5 +1,5 @@
-import Link from "next/link";
 
+import Link from "next/link";
 import Header from "@/components/home/Header";
 
 const sections = [
@@ -9,12 +9,13 @@ const sections = [
     content: (
       <>
         <p>
-          Cookies og lignende teknologier er små datafiler, som gemmes på din
-          enhed, når du bruger en hjemmeside.
+          Cookies er små datafiler, som en hjemmeside kan gemme på eller læse
+          fra din enhed. Andre teknologier kan have lignende formål, selvom de
+          ikke anvender cookies.
         </p>
         <p>
-          De kan blandt andet bruges til at få siden til at fungere, huske dine
-          valg og beskytte din konto.
+          Teknologierne kan blandt andet bruges til at få hjemmesiden til at
+          fungere, huske nødvendige valg og skabe statistik.
         </p>
       </>
     ),
@@ -26,17 +27,18 @@ const sections = [
       <>
         <p>
           Equishopper bruger teknisk nødvendige cookies og lignende teknologier
-          for at:
+          til at:
         </p>
         <ul>
           <li>holde dig sikkert logget ind</li>
           <li>beskytte din konto og platformen mod misbrug</li>
           <li>huske nødvendige valg under dit besøg</li>
-          <li>gennemføre betalinger sikkert via Stripe</li>
+          <li>understøtte betalinger og andre nødvendige funktioner</li>
         </ul>
         <p>
-          Tekniske nødvendige cookies kan ikke fravælges, fordi platformen ellers
-          ikke kan fungere korrekt.
+          Teknisk nødvendige cookies er påkrævet for de funktioner, de
+          understøtter. Blokerer du dem, kan blandt andet login og betaling
+          holde op med at fungere.
         </p>
       </>
     ),
@@ -48,12 +50,24 @@ const sections = [
       <>
         <p>Vi anvender blandt andet:</p>
         <ul>
-          <li>Supabase til login, sikkerhed og opbevaring af brugerdata</li>
-          <li>Stripe til sikker behandling af betalinger</li>
+          <li>Supabase til login, sikkerhed og brugerdata</li>
+          <li>Stripe til behandling af betalinger</li>
+          <li>Vercel til hosting og besøgsstatistik</li>
         </ul>
         <p>
-          Disse leverandører kan anvende nødvendige cookies eller lignende
-          teknologier som en del af deres tjenester.
+          Supabase og Stripe kan som led i deres funktioner benytte nødvendige
+          cookies eller lignende teknologier. Den konkrete brug afhænger af,
+          hvilke funktioner du benytter.
+        </p>
+        <p>
+          Du kan læse mere om behandling af personoplysninger i vores{" "}
+          <Link
+            href="/privatlivspolitik"
+            className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
+          >
+            privatlivspolitik
+          </Link>
+          .
         </p>
       </>
     ),
@@ -64,12 +78,33 @@ const sections = [
     content: (
       <>
         <p>
-          Equishopper anvender på nuværende tidspunkt ikke valgfrie cookies til
-          statistik, personalisering eller markedsføring.
+          Equishopper benytter Vercel Web Analytics til at forstå den samlede
+          trafik på hjemmesiden og forbedre platformen. Det kan eksempelvis
+          vise besøgte sider, henvisningskilder, browsertype, enhedstype og
+          omtrent geografisk område.
         </p>
         <p>
-          Hvis vi senere tager sådanne cookies i brug, vil du blive bedt om
-          samtykke, før de aktiveres.
+          Ifølge Vercel anvender Web Analytics ikke cookies. Vercel beskriver,
+          at besøg inden for et døgn identificeres med en midlertidig hash
+          dannet ud fra den indgående forespørgsel, og at vi modtager
+          aggregerede statistikker frem for individuelle besøgsprofiler.
+        </p>
+        <p>
+          Vi bruger ikke Google Analytics til besøgsstatistik. Hvis vi tager
+          yderligere ikke-nødvendige cookies eller lignende sporing i brug,
+          skal de gældende oplysnings- og samtykkekrav overholdes.
+        </p>
+        <p>
+          Læs mere i{" "}
+          <a
+            href="https://vercel.com/docs/analytics/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
+          >
+            Vercels dokumentation om Web Analytics
+          </a>
+          .
         </p>
       </>
     ),
@@ -81,11 +116,12 @@ const sections = [
       <>
         <p>
           Du kan slette eller blokere cookies i din browsers indstillinger.
+          Hvis du blokerer nødvendige cookies, kan dele af Equishopper holde
+          op med at fungere, fx login eller betaling.
         </p>
         <p>
-          Hvis du blokerer teknisk nødvendige cookies, kan dele af Equishopper
-          holde op med at fungere, og du kan eksempelvis få problemer med login
-          eller betaling.
+          Vercel Web Analytics anvender ifølge leverandøren ikke cookies,
+          som kan slettes gennem browserens cookieindstillinger.
         </p>
       </>
     ),
@@ -96,10 +132,7 @@ const sections = [
     content: (
       <>
         <p>Vi kan opdatere denne cookiepolitik.</p>
-        <p>
-          Den seneste version vil altid være tilgængelig på Equishoppers
-          hjemmeside.
-        </p>
+        <p>Den seneste version vil være tilgængelig på Equishoppers hjemmeside.</p>
       </>
     ),
   },
@@ -108,9 +141,7 @@ const sections = [
     title: "7. Kontakt",
     content: (
       <>
-        <p>
-          Har du spørgsmål om vores brug af cookies, kan du kontakte os på:
-        </p>
+        <p>Har du spørgsmål om vores brug af cookies, kan du kontakte os på:</p>
         <p>
           <a
             href="mailto:support@equishopper.dk"
@@ -128,29 +159,24 @@ export default function CookiepolitikPage() {
   return (
     <>
       <Header />
-
       <main className="min-h-screen bg-[#f8f5ee]">
         <section className="bg-[#063f32] px-4 pb-20 pt-36 sm:px-6 sm:pb-24 sm:pt-40 lg:px-8">
           <div className="mx-auto w-full max-w-4xl">
             <p className="text-sm font-semibold uppercase tracking-[0.32em] text-[#d4af37]">
               Juridisk
             </p>
-
             <h1 className="mt-5 max-w-3xl font-serif text-5xl leading-[1.05] text-white sm:text-6xl lg:text-7xl">
               Cookiepolitik
             </h1>
-
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70 sm:text-xl">
               Her kan du læse, hvordan Equishopper bruger cookies og lignende
-              teknologier.
+              teknologier samt cookiefri besøgsstatistik.
             </p>
-
             <p className="mt-6 text-sm text-white/50">
-              Senest opdateret: 2. august 2026
+              Senest opdateret: 11. oktober 2026
             </p>
           </div>
         </section>
-
         <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
           <div className="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
             <aside className="hidden lg:block">
@@ -158,7 +184,6 @@ export default function CookiepolitikPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d4af37]">
                   Indhold
                 </p>
-
                 <nav className="mt-4 space-y-1">
                   {sections.map((section, index) => (
                     <a
@@ -175,11 +200,10 @@ export default function CookiepolitikPage() {
                 </nav>
               </div>
             </aside>
-
             <article className="rounded-[30px] border border-[#e7e1d7] bg-white p-6 shadow-[0_18px_60px_rgba(35,45,40,0.07)] sm:p-8 lg:p-10">
               <div className="mb-10 rounded-2xl border border-[#eadfcb] bg-[#fbfaf7] p-5 text-sm leading-6 text-stone-600">
-                Denne politik beskriver den nuværende brug af teknisk nødvendige
-                cookies. Læs også vores{" "}
+                Denne politik beskriver den aktuelle brug af nødvendige cookies
+                og Vercel Web Analytics. Læs også vores{" "}
                 <Link
                   href="/privatlivspolitik"
                   className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
@@ -188,7 +212,6 @@ export default function CookiepolitikPage() {
                 </Link>
                 .
               </div>
-
               <div className="space-y-12">
                 {sections.map((section) => (
                   <section
@@ -199,7 +222,6 @@ export default function CookiepolitikPage() {
                     <h2 className="font-serif text-3xl font-bold text-[#063f32]">
                       {section.title}
                     </h2>
-
                     <div className="mt-5 space-y-4 text-base leading-7 text-stone-700 [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ul]:space-y-2">
                       {section.content}
                     </div>
