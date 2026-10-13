@@ -123,6 +123,7 @@ export default function SalesPage() {
   >(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [shipmentReminderOrder, setShipmentReminderOrder] = useState<OrderView | null>(null);
 
   useEffect(() => {
     void loadOrders();
@@ -528,6 +529,74 @@ export default function SalesPage() {
     <main className="min-h-screen bg-[#f8f6f1]">
       <Header />
 
+      {shipmentReminderOrder && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShipmentReminderOrder(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shipment-reminder-title"
+            aria-describedby="shipment-reminder-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setShipmentReminderOrder(null);
+              }
+            }}
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <h2
+              id="shipment-reminder-title"
+              className="font-serif text-2xl text-[#063f32]"
+            >
+              📸 Husk at dokumentere din vare
+            </h2>
+            <p
+              id="shipment-reminder-description"
+              className="mt-4 text-sm leading-6 text-stone-600"
+            >
+              For din egen sikkerhed anbefaler Equishopper, at du dokumenterer
+              varens stand og indpakning grundigt, inden du sender den.
+            </p>
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-stone-700">
+              <li>Tag tydelige billeder af varen fra flere vinkler.</li>
+              <li>Fotografér, hvordan varen er pakket og beskyttet.</li>
+              <li>Optag gerne en kort video, hvor pakken lukkes og forsegles.</li>
+            </ul>
+            <p className="mt-4 text-xs leading-5 text-stone-500">
+              Gem dokumentationen, indtil handlen er afsluttet. Det er en
+              anbefaling og ikke et krav.
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const order = shipmentReminderOrder;
+                  setShipmentReminderOrder(null);
+                  void createShipmentCode(order);
+                }}
+                className="rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a]"
+              >
+                Forstået – fortsæt til fragtlabel
+              </button>
+              <button
+                type="button"
+                onClick={() => setShipmentReminderOrder(null)}
+                autoFocus
+                className="rounded-full border border-[#063f32] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
+              >
+                Annuller
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-6xl px-4 pb-20 pt-28 md:px-8 md:pt-36">
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
@@ -745,9 +814,7 @@ export default function SalesPage() {
 
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          void createShipmentCode(order)
-                                        }
+                                        onClick={() => setShipmentReminderOrder(order)}
                                         disabled={
                                           generatingShipmentCodeOrderId === order.id ||
                                           submittingOrderId === order.id
