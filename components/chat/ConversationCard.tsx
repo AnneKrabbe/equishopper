@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import type {
   InboxConversation,
@@ -30,20 +31,40 @@ export default function ConversationCard({
 
   const listingImage = getFirstListingImage(conversation);
   const profile = conversation.otherProfile;
-  const profileName = profile?.full_name?.trim() || "Equishopper-bruger";
+  const profileName =
+    profile?.full_name?.trim() || "Equishopper-bruger";
+
+  // Find den anden deltager i samtalen.
+  const otherUserId =
+    conversation.buyer_id === currentUserId
+      ? conversation.seller_id
+      : conversation.buyer_id;
+
+  // Profilsamtaler har ikke et annonce-ID.
+  const conversationTitle = conversation.listing?.title ??
+    (conversation.listing_id
+      ? "Annonce"
+      : "Direkte samtale");
 
   return (
-    <Link
-      href={`/beskeder/${conversation.id}`}
-      className={`group flex items-center gap-4 p-5 transition hover:bg-[#fbfaf7] sm:gap-5 sm:p-6 ${
+    <div
+      className={`group relative flex items-center gap-4 p-5 transition hover:bg-[#fbfaf7] sm:gap-5 sm:p-6 ${
         showBorder ? "border-b border-[#eadfcb]" : ""
       }`}
     >
-      <div className="relative h-20 w-20 flex-none overflow-hidden rounded-2xl bg-[#edf3ef] sm:h-24 sm:w-24">
+      {/* Hele kortet åbner samtalen. */}
+      <Link
+        href={`/beskeder/${conversation.id}`}
+        aria-label={`Åbn samtale: ${conversationTitle}`}
+        className="absolute inset-0 z-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#063f32]"
+      />
+
+      {/* Annoncebillede */}
+      <div className="pointer-events-none relative z-10 h-20 w-20 flex-none overflow-hidden rounded-2xl bg-[#edf3ef] sm:h-24 sm:w-24">
         {listingImage ? (
           <div
             role="img"
-            aria-label={conversation.listing?.title ?? "Annoncebillede"}
+            aria-label={conversationTitle}
             className="h-full w-full bg-cover bg-center transition duration-300 group-hover:scale-105"
             style={{
               backgroundImage: `url("${listingImage}")`,
@@ -51,7 +72,7 @@ export default function ConversationCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-[#063f32] font-serif text-2xl text-[#d4af37]">
-            {getInitial(conversation.listing?.title)}
+            {getInitial(conversationTitle)}
           </div>
         )}
 
@@ -62,7 +83,7 @@ export default function ConversationCard({
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="pointer-events-none relative z-10 min-w-0 flex-1">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2
@@ -70,19 +91,24 @@ export default function ConversationCard({
                 unreadCount > 0 ? "font-bold" : "font-semibold"
               }`}
             >
-              {conversation.listing?.title ?? "Annonce"}
+              {conversationTitle}
             </h2>
 
-            <div className="mt-2 flex items-center gap-2">
+            {/* Navn og profilbillede åbner brugerens profil. */}
+            <Link
+              href={`/profile/${otherUserId}`}
+              aria-label={`Se ${profileName}s profil`}
+              className="pointer-events-auto relative z-20 mt-2 inline-flex max-w-full items-center gap-2 rounded-md transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#063f32]"
+            >
               <ProfileAvatar
                 avatarUrl={profile?.avatar_url}
                 profileName={profileName}
               />
 
-              <p className="truncate text-sm text-stone-500">
+              <span className="truncate text-sm text-stone-500 hover:text-[#063f32] hover:underline">
                 {profileName}
-              </p>
-            </div>
+              </span>
+            </Link>
           </div>
 
           <span className="flex-none text-xs text-stone-400">
@@ -106,7 +132,7 @@ export default function ConversationCard({
           </span>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 

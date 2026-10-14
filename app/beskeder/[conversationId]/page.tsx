@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -51,7 +52,7 @@ type ChatListing = {
 
 type ChatConversation = {
   id: string;
-  listing_id: string;
+  listing_id: string | null;
   buyer_id: string;
   seller_id: string;
   created_at: string;
@@ -74,9 +75,8 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [otherProfile, setOtherProfile] =
     useState<ChatProfile | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(
-    null
-  );
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
 
   const [messageBody, setMessageBody] = useState("");
   const [loading, setLoading] = useState(true);
@@ -116,27 +116,29 @@ export default function ConversationPage() {
 
         setCurrentUserId(user.id);
 
-        const { data: conversationData, error: conversationError } =
-          await supabase
-            .from("conversations")
-            .select(`
+        const {
+          data: conversationData,
+          error: conversationError,
+        } = await supabase
+          .from("conversations")
+          .select(`
+            id,
+            listing_id,
+            buyer_id,
+            seller_id,
+            created_at,
+            updated_at,
+            listing:listings (
               id,
-              listing_id,
-              buyer_id,
-              seller_id,
-              created_at,
-              updated_at,
-              listing:listings (
-                id,
-                title,
-                listing_images (
-                  image_url,
-                  sort_order
-                )
+              title,
+              listing_images (
+                image_url,
+                sort_order
               )
-            `)
-            .eq("id", conversationId)
-            .maybeSingle();
+            )
+          `)
+          .eq("id", conversationId)
+          .maybeSingle();
 
         if (conversationError) {
           throw conversationError;
@@ -176,12 +178,14 @@ export default function ConversationPage() {
             ? formattedConversation.seller_id
             : formattedConversation.buyer_id;
 
-        const { data: profileData, error: profileError } =
-          await supabase
-            .from("profiles")
-            .select("id, full_name, avatar_url")
-            .eq("id", otherUserId)
-            .maybeSingle();
+        const {
+          data: profileData,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .eq("id", otherUserId)
+          .maybeSingle();
 
         if (profileError) {
           throw profileError;
@@ -191,20 +195,22 @@ export default function ConversationPage() {
           (profileData as ChatProfile | null) ?? null
         );
 
-        const { data: messageData, error: messageError } =
-          await supabase
-            .from("messages")
-            .select(`
-              id,
-              conversation_id,
-              sender_id,
-              body,
-              message_type,
-              created_at,
-              read_at
-            `)
-            .eq("conversation_id", conversationId)
-            .order("created_at", { ascending: true });
+        const {
+          data: messageData,
+          error: messageError,
+        } = await supabase
+          .from("messages")
+          .select(`
+            id,
+            conversation_id,
+            sender_id,
+            body,
+            message_type,
+            created_at,
+            read_at
+          `)
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
 
         if (messageError) {
           throw messageError;
@@ -212,7 +218,10 @@ export default function ConversationPage() {
 
         setMessages((messageData ?? []) as ChatMessage[]);
 
-        const { data: offerData, error: offerError } = await supabase
+        const {
+          data: offerData,
+          error: offerError,
+        } = await supabase
           .from("offers")
           .select(`
             id,
@@ -302,7 +311,10 @@ export default function ConversationPage() {
           messageId: string;
         }
       | {
-          type: "counter-offer" | "offer-accepted" | "offer-rejected";
+          type:
+            | "counter-offer"
+            | "offer-accepted"
+            | "offer-rejected";
           offerId: string;
         }
   ) {
@@ -344,14 +356,17 @@ export default function ConversationPage() {
       }
     } catch (error) {
       /*
-       * E-mail er sekundær. En allerede gemt besked eller et allerede
-       * opdateret bud må ikke fremstå som fejlet, bare fordi mailen fejler.
+       * E-mail er sekundær. En allerede gemt besked
+       * eller et allerede opdateret bud må ikke fremstå
+       * som fejlet, bare fordi mailen fejler.
        */
       console.error("Mailnotifikation fejlede:", error);
     }
   }
 
-  async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
+  async function handleSendMessage(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     const trimmedBody = messageBody.trim();
@@ -369,25 +384,27 @@ export default function ConversationPage() {
       setSending(true);
       setErrorMessage("");
 
-      const { data: newMessage, error: messageError } =
-        await supabase
-          .from("messages")
-          .insert({
-            conversation_id: conversation.id,
-            sender_id: currentUserId,
-            body: trimmedBody,
-            message_type: "text",
-          })
-          .select(`
-            id,
-            conversation_id,
-            sender_id,
-            body,
-            message_type,
-            created_at,
-            read_at
-          `)
-          .single();
+      const {
+        data: newMessage,
+        error: messageError,
+      } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: conversation.id,
+          sender_id: currentUserId,
+          body: trimmedBody,
+          message_type: "text",
+        })
+        .select(`
+          id,
+          conversation_id,
+          sender_id,
+          body,
+          message_type,
+          created_at,
+          read_at
+        `)
+        .single();
 
       if (messageError) {
         throw messageError;
@@ -431,7 +448,6 @@ export default function ConversationPage() {
     }
   }
 
-
   function getOfferSenderId(offer: Offer) {
     const linkedMessage = messages.find(
       (message) => message.id === offer.message_id
@@ -460,7 +476,9 @@ export default function ConversationPage() {
     }
 
     if (getOfferReceiverId(offer) !== currentUserId) {
-      setErrorMessage("Kun modtageren kan acceptere eller afslå buddet.");
+      setErrorMessage(
+        "Kun modtageren kan acceptere eller afslå buddet."
+      );
       return;
     }
 
@@ -495,14 +513,19 @@ export default function ConversationPage() {
           ? `Buddet på ${Number(offer.amount).toLocaleString("da-DK")} kr. blev accepteret.`
           : `Buddet på ${Number(offer.amount).toLocaleString("da-DK")} kr. blev afslået.`;
 
-      const { data: statusMessage, error: messageError } = await supabase
+      const {
+        data: statusMessage,
+        error: messageError,
+      } = await supabase
         .from("messages")
         .insert({
           conversation_id: offer.conversation_id,
           sender_id: currentUserId,
           body,
           message_type:
-            newStatus === "accepted" ? "offer_accepted" : "offer_declined",
+            newStatus === "accepted"
+              ? "offer_accepted"
+              : "offer_declined",
         })
         .select(`
           id,
@@ -536,7 +559,9 @@ export default function ConversationPage() {
 
       await supabase
         .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
+        .update({
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", offer.conversation_id);
 
       await triggerChatEmail({
@@ -548,6 +573,7 @@ export default function ConversationPage() {
       });
     } catch (error) {
       console.error("Buddet kunne ikke opdateres:", error);
+
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -599,7 +625,10 @@ export default function ConversationPage() {
         ? `Modbud på ${amount.toLocaleString("da-DK")} kr.\n\n${counterOfferMessage.trim()}`
         : `Modbud på ${amount.toLocaleString("da-DK")} kr.`;
 
-      const { data: newMessage, error: messageError } = await supabase
+      const {
+        data: newMessage,
+        error: messageError,
+      } = await supabase
         .from("messages")
         .insert({
           conversation_id: conversation.id,
@@ -620,7 +649,10 @@ export default function ConversationPage() {
 
       if (messageError) throw messageError;
 
-      const { data: newOffer, error: newOfferError } = await supabase
+      const {
+        data: newOffer,
+        error: newOfferError,
+      } = await supabase
         .from("offers")
         .insert({
           listing_id: conversation.listing_id,
@@ -650,7 +682,11 @@ export default function ConversationPage() {
         .single();
 
       if (newOfferError) {
-        await supabase.from("messages").delete().eq("id", newMessage.id);
+        await supabase
+          .from("messages")
+          .delete()
+          .eq("id", newMessage.id);
+
         throw newOfferError;
       }
 
@@ -684,7 +720,9 @@ export default function ConversationPage() {
 
       await supabase
         .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
+        .update({
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", conversation.id);
 
       await triggerChatEmail({
@@ -693,6 +731,7 @@ export default function ConversationPage() {
       });
     } catch (error) {
       console.error("Modbuddet kunne ikke sendes:", error);
+
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -757,7 +796,9 @@ export default function ConversationPage() {
               Samtalen kunne ikke åbnes
             </h1>
 
-            <p className="mt-3 text-red-700">{errorMessage}</p>
+            <p className="mt-3 text-red-700">
+              {errorMessage}
+            </p>
 
             <Link
               href="/beskeder"
@@ -808,19 +849,39 @@ export default function ConversationPage() {
                 </p>
 
                 <h1 className="mt-1 truncate font-serif text-3xl text-white sm:text-4xl">
-                  {conversation.listing?.title ?? "Annonce"}
+                  {conversation.listing?.title ??
+                    (conversation.listing_id
+                      ? "Annonce"
+                      : "Direkte samtale")}
                 </h1>
 
-                <div className="mt-3 flex items-center gap-2">
-                  <ProfileAvatar
-                    avatarUrl={otherProfile?.avatar_url}
-                    profileName={profileName}
-                  />
+                {otherProfile ? (
+                  <Link
+                    href={`/profile/${otherProfile.id}`}
+                    aria-label={`Se ${profileName}s profil`}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d4af37]"
+                  >
+                    <ProfileAvatar
+                      avatarUrl={otherProfile.avatar_url}
+                      profileName={profileName}
+                    />
 
-                  <span className="truncate text-sm text-white/70">
-                    {profileName}
-                  </span>
-                </div>
+                    <span className="truncate text-sm text-white/70 hover:text-white hover:underline">
+                      {profileName}
+                    </span>
+                  </Link>
+                ) : (
+                  <div className="mt-3 flex items-center gap-2">
+                    <ProfileAvatar
+                      avatarUrl={null}
+                      profileName={profileName}
+                    />
+
+                    <span className="truncate text-sm text-white/70">
+                      {profileName}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -861,11 +922,16 @@ export default function ConversationPage() {
                         <div className="w-full max-w-md overflow-hidden rounded-[24px] border border-[#d4af37]/50 bg-white shadow-sm">
                           <div className="bg-[#063f32] px-5 py-4 text-white">
                             <p className="text-[10px] uppercase tracking-[0.22em] text-[#d4af37]">
-                              {offer.parent_offer_id ? "Modbud" : "Bud"}
+                              {offer.parent_offer_id
+                                ? "Modbud"
+                                : "Bud"}
                             </p>
 
                             <p className="mt-1 font-serif text-3xl">
-                              {Number(offer.amount).toLocaleString("da-DK")} kr.
+                              {Number(offer.amount).toLocaleString(
+                                "da-DK"
+                              )}{" "}
+                              kr.
                             </p>
                           </div>
 
@@ -877,16 +943,17 @@ export default function ConversationPage() {
                             )}
 
                             <div className="mt-4 flex items-center justify-between gap-3">
-                              <OfferStatusBadge status={offer.status} />
+                              <OfferStatusBadge
+                                status={offer.status}
+                              />
 
                               <span className="text-xs text-stone-400">
-                                {new Date(offer.created_at).toLocaleString(
-                                  "da-DK",
-                                  {
-                                    dateStyle: "short",
-                                    timeStyle: "short",
-                                  }
-                                )}
+                                {new Date(
+                                  offer.created_at
+                                ).toLocaleString("da-DK", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
                               </span>
                             </div>
 
@@ -894,9 +961,14 @@ export default function ConversationPage() {
                               <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
                                 <button
                                   type="button"
-                                  disabled={offerActionLoading === offer.id}
+                                  disabled={
+                                    offerActionLoading === offer.id
+                                  }
                                   onClick={() =>
-                                    handleOfferStatus(offer, "declined")
+                                    handleOfferStatus(
+                                      offer,
+                                      "declined"
+                                    )
                                   }
                                   className="rounded-full border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                                 >
@@ -905,8 +977,12 @@ export default function ConversationPage() {
 
                                 <button
                                   type="button"
-                                  disabled={offerActionLoading === offer.id}
-                                  onClick={() => openCounterOffer(offer)}
+                                  disabled={
+                                    offerActionLoading === offer.id
+                                  }
+                                  onClick={() =>
+                                    openCounterOffer(offer)
+                                  }
                                   className="rounded-full border border-[#d4af37] px-4 py-2.5 text-sm font-medium text-[#063f32] transition hover:bg-[#f4ead0] disabled:opacity-50"
                                 >
                                   Modbud
@@ -914,9 +990,14 @@ export default function ConversationPage() {
 
                                 <button
                                   type="button"
-                                  disabled={offerActionLoading === offer.id}
+                                  disabled={
+                                    offerActionLoading === offer.id
+                                  }
                                   onClick={() =>
-                                    handleOfferStatus(offer, "accepted")
+                                    handleOfferStatus(
+                                      offer,
+                                      "accepted"
+                                    )
                                   }
                                   className="rounded-full bg-[#063f32] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#052f26] disabled:opacity-50"
                                 >
@@ -934,7 +1015,9 @@ export default function ConversationPage() {
                     <div
                       key={message.id}
                       className={`flex ${
-                        isOwnMessage ? "justify-end" : "justify-start"
+                        isOwnMessage
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
                       <div
@@ -955,13 +1038,12 @@ export default function ConversationPage() {
                               : "text-stone-400"
                           }`}
                         >
-                          {new Date(message.created_at).toLocaleTimeString(
-                            "da-DK",
-                            {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}
+                          {new Date(
+                            message.created_at
+                          ).toLocaleTimeString("da-DK", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </p>
                       </div>
                     </div>
@@ -973,6 +1055,7 @@ export default function ConversationPage() {
                     <p className="font-serif text-2xl text-[#063f32]">
                       Ingen beskeder endnu
                     </p>
+
                     <p className="mt-2 text-sm text-stone-500">
                       Start samtalen ved at sende en besked.
                     </p>
@@ -988,7 +1071,10 @@ export default function ConversationPage() {
               className="border-t border-[#eadfcb] bg-white p-4 sm:p-5"
             >
               <div className="flex items-end gap-3">
-                <label htmlFor="message" className="sr-only">
+                <label
+                  htmlFor="message"
+                  className="sr-only"
+                >
                   Skriv en besked
                 </label>
 
@@ -1023,8 +1109,8 @@ export default function ConversationPage() {
               </div>
 
               <p className="mt-2 px-1 text-xs text-stone-400">
-                Enter sender beskeden. Shift + Enter laver en ny
-                linje.
+                Enter sender beskeden. Shift + Enter laver en
+                ny linje.
               </p>
             </form>
           </div>
@@ -1034,7 +1120,9 @@ export default function ConversationPage() {
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
             onClick={() => {
-              if (!offerActionLoading) setCounterOfferOpen(false);
+              if (!offerActionLoading) {
+                setCounterOfferOpen(false);
+              }
             }}
           >
             <div
@@ -1046,14 +1134,16 @@ export default function ConversationPage() {
                   <p className="text-[11px] uppercase tracking-[0.24em] text-[#b79a3d]">
                     Send modbud
                   </p>
+
                   <h2 className="mt-2 font-serif text-3xl text-[#063f32]">
                     Nyt beløb
                   </h2>
+
                   <p className="mt-2 text-sm text-stone-500">
                     Seneste bud:{" "}
-                    {Number(counterOfferParent.amount).toLocaleString(
-                      "da-DK"
-                    )}{" "}
+                    {Number(
+                      counterOfferParent.amount
+                    ).toLocaleString("da-DK")}{" "}
                     kr.
                   </p>
                 </div>
@@ -1061,7 +1151,9 @@ export default function ConversationPage() {
                 <button
                   type="button"
                   disabled={Boolean(offerActionLoading)}
-                  onClick={() => setCounterOfferOpen(false)}
+                  onClick={() =>
+                    setCounterOfferOpen(false)
+                  }
                   className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#063f32] shadow-sm disabled:opacity-50"
                   aria-label="Luk"
                 >
@@ -1089,7 +1181,9 @@ export default function ConversationPage() {
                       autoFocus
                       value={counterOfferAmount}
                       onChange={(event) =>
-                        setCounterOfferAmount(event.target.value)
+                        setCounterOfferAmount(
+                          event.target.value
+                        )
                       }
                       placeholder="Fx 3.750"
                       className="w-full rounded-2xl border border-[#d9ccb4] bg-white px-4 py-3.5 pr-14 text-lg text-[#063f32] outline-none focus:border-[#063f32]"
@@ -1115,7 +1209,9 @@ export default function ConversationPage() {
                     maxLength={1000}
                     value={counterOfferMessage}
                     onChange={(event) =>
-                      setCounterOfferMessage(event.target.value)
+                      setCounterOfferMessage(
+                        event.target.value
+                      )
                     }
                     placeholder="Valgfri besked..."
                     className="w-full resize-none rounded-2xl border border-[#d9ccb4] bg-white px-4 py-3.5 text-[#063f32] outline-none focus:border-[#063f32]"
@@ -1126,7 +1222,9 @@ export default function ConversationPage() {
                   <button
                     type="button"
                     disabled={Boolean(offerActionLoading)}
-                    onClick={() => setCounterOfferOpen(false)}
+                    onClick={() =>
+                      setCounterOfferOpen(false)
+                    }
                     className="flex-1 rounded-full border border-[#d9ccb4] px-5 py-3.5 font-medium text-[#063f32] disabled:opacity-50"
                   >
                     Annuller
@@ -1140,19 +1238,19 @@ export default function ConversationPage() {
                     }
                     className="flex-1 rounded-full bg-[#063f32] px-5 py-3.5 font-medium text-white disabled:opacity-50"
                   >
-                    {offerActionLoading ? "Sender..." : "Send modbud"}
+                    {offerActionLoading
+                      ? "Sender..."
+                      : "Send modbud"}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
       </main>
     </>
   );
 }
-
 
 function OfferStatusBadge({
   status,
@@ -1168,11 +1266,16 @@ function OfferStatusBadge({
   };
 
   const styles: Record<OfferStatus, string> = {
-    pending: "border-amber-200 bg-amber-50 text-amber-800",
-    accepted: "border-green-200 bg-green-50 text-green-800",
-    declined: "border-red-200 bg-red-50 text-red-700",
-    withdrawn: "border-stone-200 bg-stone-100 text-stone-600",
-    superseded: "border-blue-200 bg-blue-50 text-blue-700",
+    pending:
+      "border-amber-200 bg-amber-50 text-amber-800",
+    accepted:
+      "border-green-200 bg-green-50 text-green-800",
+    declined:
+      "border-red-200 bg-red-50 text-red-700",
+    withdrawn:
+      "border-stone-200 bg-stone-100 text-stone-600",
+    superseded:
+      "border-blue-200 bg-blue-50 text-blue-700",
   };
 
   return (

@@ -1,6 +1,9 @@
+
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import {
   ArrowRight,
   Calendar,
@@ -12,6 +15,7 @@ import {
 
 type SellerHeaderProps = {
   profile: {
+    id: string;
     full_name: string | null;
     username: string | null;
     avatar_url: string | null;
@@ -49,6 +53,129 @@ function memberSince(date?: string | null) {
 export default function SellerHeader({
   profile,
 }: SellerHeaderProps) {
+  const router = useRouter();
+  const [openingConversation, setOpeningConversation] =
+    useState(false);
+
+  async function handleContactSeller() {
+    if (openingConversation) return;
+
+    try {
+      setOpeningConversation(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        const returnUrl = `/profile/${profile.id}`;
+
+        router.push(
+          `/login?redirect=${encodeURIComponent(returnUrl)}`
+        );
+        return;
+      }
+
+      // Gem bruger-ID'et, så TypeScript ved,
+      // at det ikke kan være null.
+      const currentUserId = user.id;
+
+      if (currentUserId === profile.id) {
+        alert("Du kan ikke starte en samtale med dig selv.");
+        return;
+      }
+
+      // Find en eksisterende direkte samtale,
+      // uanset hvilken bruger der startede den.
+      async function findExistingConversation() {
+        return await supabase
+          .from("conversations")
+          .select("id")
+          .is("listing_id", null)
+          .or(
+            `and(buyer_id.eq.${currentUserId},seller_id.eq.${profile.id}),and(buyer_id.eq.${profile.id},seller_id.eq.${currentUserId})`
+          )
+          .maybeSingle();
+      }
+
+      const {
+        data: existingConversation,
+        error: findError,
+      } = await findExistingConversation();
+
+      if (findError) {
+        throw findError;
+      }
+
+      if (existingConversation) {
+        router.push(`/beskeder/${existingConversation.id}`);
+        return;
+      }
+
+      // Opret en direkte samtale uden annonce.
+      const {
+        data: newConversation,
+        error: createError,
+      } = await supabase
+        .from("conversations")
+        .insert({
+          listing_id: null,
+          buyer_id: currentUserId,
+          seller_id: profile.id,
+        })
+        .select("id")
+        .single();
+
+      if (createError) {
+        // En anden oprettelse kan være kommet først.
+        // Genbrug i så fald den eksisterende samtale.
+        if (createError.code === "23505") {
+          const {
+            data: concurrentConversation,
+            error: retryError,
+          } = await findExistingConversation();
+
+          if (retryError) {
+            throw retryError;
+          }
+
+          if (concurrentConversation) {
+            router.push(
+              `/beskeder/${concurrentConversation.id}`
+            );
+            return;
+          }
+        }
+
+        throw createError;
+      }
+
+      if (!newConversation) {
+        throw new Error("Samtalen kunne ikke oprettes.");
+      }
+
+      router.push(`/beskeder/${newConversation.id}`);
+    } catch (error) {
+      console.error(
+        "Kunne ikke åbne direkte samtale:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Kunne ikke åbne samtalen. Prøv igen."
+      );
+    } finally {
+      setOpeningConversation(false);
+    }
+  }
+
   return (
     <section className="relative w-full">
       <div className="relative left-1/2 w-screen -translate-x-1/2">
@@ -166,7 +293,9 @@ export default function SellerHeader({
               </div>
 
               <div>
-                <p className="text-3xl font-bold text-[#063f32]">--</p>
+                <p className="text-3xl font-bold text-[#063f32]">
+                  --
+                </p>
 
                 <p className="mt-1 text-xs uppercase tracking-wider text-stone-500">
                   Afstand
@@ -174,7 +303,9 @@ export default function SellerHeader({
               </div>
 
               <div>
-                <p className="text-3xl font-bold text-[#063f32]">--</p>
+                <p className="text-3xl font-bold text-[#063f32]">
+                  --
+                </p>
 
                 <p className="mt-1 text-xs uppercase tracking-wider text-stone-500">
                   Svartid
@@ -182,13 +313,17 @@ export default function SellerHeader({
               </div>
             </div>
 
-            <Link
-              href="/messages"
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#063f32] px-6 py-4 font-semibold text-white transition hover:bg-[#0b5a47]"
+            <button
+              type="button"
+              onClick={handleContactSeller}
+              disabled={openingConversation}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#063f32] px-6 py-4 font-semibold text-white transition hover:bg-[#0b5a47] disabled:cursor-wait disabled:opacity-60"
             >
-              Kontakt sælger
+              {openingConversation
+                ? "Åbner samtale..."
+                : "Kontakt sælger"}
               <ArrowRight size={18} />
-            </Link>
+            </button>
           </div>
         </div>
       </div>

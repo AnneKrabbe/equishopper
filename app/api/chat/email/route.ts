@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
 
+import { NextRequest, NextResponse } from "next/server";
 import {
   sendCounterOfferEmail,
   sendNewMessageEmail,
@@ -27,7 +27,7 @@ type RequestBody = {
 
 type ConversationRow = {
   id: string;
-  listing_id: string;
+  listing_id: string | null;
   buyer_id: string;
   seller_id: string;
 };
@@ -65,12 +65,11 @@ type OfferRow = {
   status: string;
 };
 
-const siteUrl =
-  (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "https://www.equishopper.dk"
-  ).replace(/\/$/, "");
+const siteUrl = (
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://www.equishopper.dk"
+).replace(/\/+$/, "");
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,7 +78,7 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json(
         { error: "Du skal være logget ind." },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -90,28 +89,30 @@ export async function POST(request: NextRequest) {
     if (!conversationId || !isUuid(conversationId)) {
       return NextResponse.json(
         { error: "Samtale-id er ugyldigt." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (!isEmailType(type)) {
       return NextResponse.json(
         { error: "Mailtypen er ugyldig." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    const { data: conversationData, error: conversationError } =
-      await supabaseAdmin
-        .from("conversations")
-        .select(`
-          id,
-          listing_id,
-          buyer_id,
-          seller_id
-        `)
-        .eq("id", conversationId)
-        .maybeSingle();
+    const {
+      data: conversationData,
+      error: conversationError,
+    } = await supabaseAdmin
+      .from("conversations")
+      .select(`
+        id,
+        listing_id,
+        buyer_id,
+        seller_id
+      `)
+      .eq("id", conversationId)
+      .maybeSingle();
 
     if (conversationError) {
       throw conversationError;
@@ -120,11 +121,12 @@ export async function POST(request: NextRequest) {
     if (!conversationData) {
       return NextResponse.json(
         { error: "Samtalen blev ikke fundet." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
-    const conversation = conversationData as ConversationRow;
+    const conversation =
+      conversationData as ConversationRow;
 
     if (
       conversation.buyer_id !== user.id &&
@@ -132,32 +134,49 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "Du har ikke adgang til denne samtale." },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
-    const { data: listingData, error: listingError } =
-      await supabaseAdmin
+    /*
+     * En direkte profilsamtale har listing_id = null.
+     *
+     * Vi må derfor kun slå en annonce op, hvis samtalen
+     * faktisk er knyttet til en annonce.
+     *
+     * Det bevarer den eksisterende funktion for
+     * annoncesamtaler og forhindrer UUID-fejlen "null".
+     */
+    let listing: ListingRow | null = null;
+    let listingImageUrl: string | null = null;
+
+    if (conversation.listing_id) {
+      const {
+        data: listingData,
+        error: listingError,
+      } = await supabaseAdmin
         .from("listings")
         .select("id, title, price")
         .eq("id", conversation.listing_id)
         .maybeSingle();
 
-    if (listingError) {
-      throw listingError;
-    }
+      if (listingError) {
+        throw listingError;
+      }
 
-    if (!listingData) {
-      return NextResponse.json(
-        { error: "Annoncen blev ikke fundet." },
-        { status: 404 },
-      );
-    }
+      if (!listingData) {
+        return NextResponse.json(
+          { error: "Annoncen blev ikke fundet." },
+          { status: 404 }
+        );
+      }
 
-    const listing = listingData as ListingRow;
+      listing = listingData as ListingRow;
 
-    const { data: imageData, error: imageError } =
-      await supabaseAdmin
+      const {
+        data: imageData,
+        error: imageError,
+      } = await supabaseAdmin
         .from("listing_images")
         .select("image_url, sort_order")
         .eq("listing_id", listing.id)
@@ -165,32 +184,36 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-    if (imageError) {
-      console.error(
-        "Kunne ikke hente annoncebillede til chat-mail:",
-        imageError,
-      );
+      if (imageError) {
+        console.error(
+          "Kunne ikke hente annoncebillede til chat-mail:",
+          imageError
+        );
+      }
+
+      listingImageUrl = imageData?.image_url ?? null;
     }
 
-    const listingImageUrl =
-      imageData?.image_url ?? null;
-
-    const { data: profileData, error: profileError } =
-      await supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, username")
-        .in("id", [
-          conversation.buyer_id,
-          conversation.seller_id,
-        ]);
+    const {
+      data: profileData,
+      error: profileError,
+    } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, username")
+      .in("id", [
+        conversation.buyer_id,
+        conversation.seller_id,
+      ]);
 
     if (profileError) {
       throw profileError;
     }
 
     const profiles = (profileData ?? []) as ProfileRow[];
+
     const actorProfile =
-      profiles.find((profile) => profile.id === user.id) ?? null;
+      profiles.find((profile) => profile.id === user.id) ??
+      null;
 
     const actorName =
       getDisplayName(actorProfile) || "Equishopper-bruger";
@@ -198,29 +221,38 @@ export async function POST(request: NextRequest) {
     const conversationUrl =
       `${siteUrl}/beskeder/${conversation.id}`;
 
+    /*
+     * NY BESKED
+     *
+     * Denne mailtype understøtter både:
+     * - Samtaler om en bestemt annonce
+     * - Direkte samtaler fra en offentlig profil
+     */
     if (type === "new-message") {
       const messageId = body.messageId?.trim();
 
       if (!messageId || !isUuid(messageId)) {
         return NextResponse.json(
           { error: "Besked-id er ugyldigt." },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
-      const { data: messageData, error: messageError } =
-        await supabaseAdmin
-          .from("messages")
-          .select(`
-            id,
-            conversation_id,
-            sender_id,
-            body,
-            message_type
-          `)
-          .eq("id", messageId)
-          .eq("conversation_id", conversation.id)
-          .maybeSingle();
+      const {
+        data: messageData,
+        error: messageError,
+      } = await supabaseAdmin
+        .from("messages")
+        .select(`
+          id,
+          conversation_id,
+          sender_id,
+          body,
+          message_type
+        `)
+        .eq("id", messageId)
+        .eq("conversation_id", conversation.id)
+        .maybeSingle();
 
       if (messageError) {
         throw messageError;
@@ -229,7 +261,7 @@ export async function POST(request: NextRequest) {
       if (!messageData) {
         return NextResponse.json(
           { error: "Beskeden blev ikke fundet." },
-          { status: 404 },
+          { status: 404 }
         );
       }
 
@@ -237,33 +269,50 @@ export async function POST(request: NextRequest) {
 
       if (message.sender_id !== user.id) {
         return NextResponse.json(
-          { error: "Du kan kun sende mail for dine egne beskeder." },
-          { status: 403 },
+          {
+            error:
+              "Du kan kun sende mail for dine egne beskeder.",
+          },
+          { status: 403 }
         );
       }
 
-      const recipientId =
-        getOtherParticipantId(conversation, user.id);
+      const recipientId = getOtherParticipantId(
+        conversation,
+        user.id
+      );
 
       const recipient = await getRecipient(
         recipientId,
-        profiles,
+        profiles
       );
 
+      /*
+       * Notifikationsteksten tilpasses, afhængigt
+       * af om beskeden handler om en annonce.
+       */
       await createChatNotification({
         userId: recipientId,
         type: "new_message",
         title: "Ny besked",
-        message: `${actorName} har sendt dig en besked om "${listing.title}".`,
+        message: listing
+          ? `${actorName} har sendt dig en besked om "${listing.title}".`
+          : `${actorName} har sendt dig en direkte besked.`,
         href: `/beskeder/${conversation.id}`,
       });
 
+      /*
+       * Den eksisterende mailtemplate genbruges.
+       * Ved en direkte samtale bliver titlen
+       * "Direkte samtale", og der er intet annoncebillede.
+       */
       const result = await sendNewMessageEmail({
         to: recipient,
         props: {
           recipientName: recipient.name ?? null,
           senderName: actorName,
-          listingTitle: listing.title,
+          listingTitle:
+            listing?.title ?? "Direkte samtale",
           listingImageUrl,
           message: message.body,
           conversationUrl,
@@ -276,30 +325,51 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    /*
+     * BUD OG MODBUD
+     *
+     * Disse funktioner hører stadig kun til
+     * samtaler om en konkret annonce.
+     *
+     * De må ikke anvendes på direkte profilsamtaler.
+     */
+    if (!listing) {
+      return NextResponse.json(
+        {
+          error:
+            "Bud kræver en samtale om en annonce.",
+        },
+        { status: 409 }
+      );
+    }
+
     const offerId = body.offerId?.trim();
 
     if (!offerId || !isUuid(offerId)) {
       return NextResponse.json(
         { error: "Bud-id er ugyldigt." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     const offer = await getOffer(
       offerId,
-      conversation.id,
+      conversation.id
     );
 
     if (!offer) {
       return NextResponse.json(
         { error: "Buddet blev ikke fundet." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     const offerSenderId =
       await getOfferSenderId(offer);
 
+    /*
+     * NYT BUD
+     */
     if (type === "new-offer") {
       if (offer.parent_offer_id) {
         return NextResponse.json(
@@ -307,7 +377,7 @@ export async function POST(request: NextRequest) {
             error:
               "Et modbud skal sendes som mailtypen counter-offer.",
           },
-          { status: 409 },
+          { status: 409 }
         );
       }
 
@@ -320,7 +390,7 @@ export async function POST(request: NextRequest) {
             error:
               "Kun køberen, der oprettede buddet, kan udløse denne mail.",
           },
-          { status: 403 },
+          { status: 403 }
         );
       }
 
@@ -330,20 +400,22 @@ export async function POST(request: NextRequest) {
             error:
               "Kun et aktivt bud kan udløse en ny-bud-mail.",
           },
-          { status: 409 },
+          { status: 409 }
         );
       }
 
       const recipient = await getRecipient(
         conversation.seller_id,
-        profiles,
+        profiles
       );
 
       await createChatNotification({
         userId: conversation.seller_id,
         type: "new_offer",
         title: "Nyt bud",
-        message: `${actorName} har budt ${formatMoney(offer.amount)} på "${listing.title}".`,
+        message:
+          `${actorName} har budt ${formatMoney(offer.amount)} ` +
+          `på "${listing.title}".`,
         href: `/beskeder/${conversation.id}`,
       });
 
@@ -356,7 +428,8 @@ export async function POST(request: NextRequest) {
           listingImageUrl,
           listingPrice: formatMoney(listing.price),
           offerAmount: formatMoney(offer.amount),
-          offerMessage: offer.message ?? undefined,
+          offerMessage:
+            offer.message ?? undefined,
           offerUrl: conversationUrl,
         },
       });
@@ -367,38 +440,52 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    /*
+     * MODBUD
+     */
     if (type === "counter-offer") {
       if (offerSenderId !== user.id) {
         return NextResponse.json(
-          { error: "Du kan kun sende mail for dit eget modbud." },
-          { status: 403 },
+          {
+            error:
+              "Du kan kun sende mail for dit eget modbud.",
+          },
+          { status: 403 }
         );
       }
 
-      const recipientId =
-        getOtherParticipantId(conversation, user.id);
+      const recipientId = getOtherParticipantId(
+        conversation,
+        user.id
+      );
 
       const recipient = await getRecipient(
         recipientId,
-        profiles,
+        profiles
       );
 
-      let originalOfferAmount: number | string | null = null;
+      let originalOfferAmount:
+        | number
+        | string
+        | null = null;
 
       if (offer.parent_offer_id) {
         const parentOffer = await getOffer(
           offer.parent_offer_id,
-          conversation.id,
+          conversation.id
         );
 
-        originalOfferAmount = parentOffer?.amount ?? null;
+        originalOfferAmount =
+          parentOffer?.amount ?? null;
       }
 
       await createChatNotification({
         userId: recipientId,
         type: "counter_offer",
         title: "Nyt modbud",
-        message: `${actorName} har sendt dig et modbud på ${formatMoney(offer.amount)} på "${listing.title}".`,
+        message:
+          `${actorName} har sendt dig et modbud på ` +
+          `${formatMoney(offer.amount)} på "${listing.title}".`,
         href: `/beskeder/${conversation.id}`,
       });
 
@@ -414,8 +501,10 @@ export async function POST(request: NextRequest) {
             originalOfferAmount !== null
               ? formatMoney(originalOfferAmount)
               : formatMoney(listing.price),
-          counterOfferAmount: formatMoney(offer.amount),
-          counterOfferMessage: offer.message ?? undefined,
+          counterOfferAmount:
+            formatMoney(offer.amount),
+          counterOfferMessage:
+            offer.message ?? undefined,
           offerUrl: conversationUrl,
         },
       });
@@ -427,12 +516,15 @@ export async function POST(request: NextRequest) {
     }
 
     /*
-     * Ved accept/afslag skal den bruger, der reagerer på buddet,
-     * være modtageren af buddet. Mailen sendes tilbage til den,
-     * der oprindeligt sendte buddet.
+     * ACCEPT ELLER AFSLAG PÅ BUD
+     *
+     * Brugeren, der reagerer på buddet, skal
+     * være modtageren af det oprindelige bud.
      */
-    const offerReceiverId =
-      getOtherParticipantId(conversation, offerSenderId);
+    const offerReceiverId = getOtherParticipantId(
+      conversation,
+      offerSenderId
+    );
 
     if (offerReceiverId !== user.id) {
       return NextResponse.json(
@@ -440,20 +532,26 @@ export async function POST(request: NextRequest) {
           error:
             "Kun modtageren af buddet kan udløse denne mail.",
         },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
     const recipient = await getRecipient(
       offerSenderId,
-      profiles,
+      profiles
     );
 
+    /*
+     * ACCEPTERET BUD
+     */
     if (type === "offer-accepted") {
       if (offer.status !== "accepted") {
         return NextResponse.json(
-          { error: "Buddet er ikke markeret som accepteret." },
-          { status: 409 },
+          {
+            error:
+              "Buddet er ikke markeret som accepteret.",
+          },
+          { status: 409 }
         );
       }
 
@@ -461,7 +559,9 @@ export async function POST(request: NextRequest) {
         userId: offerSenderId,
         type: "offer_accepted",
         title: "Dit bud er accepteret",
-        message: `Dit bud på ${formatMoney(offer.amount)} på "${listing.title}" er blevet accepteret.`,
+        message:
+          `Dit bud på ${formatMoney(offer.amount)} ` +
+          `på "${listing.title}" er blevet accepteret.`,
         href: `/beskeder/${conversation.id}`,
       });
 
@@ -469,11 +569,12 @@ export async function POST(request: NextRequest) {
         to: recipient,
         props: {
           /*
-           * De eksisterende template-props hedder buyerName/sellerName.
-           * Vi bruger modtager/aktør, så mailen stadig går til den
-           * korrekte part også ved et accepteret modbud.
+           * De eksisterende template-props hedder
+           * buyerName/sellerName. Modtager/aktør
+           * bevares ved accepterede modbud.
            */
-          buyerName: recipient.name ?? "Equishopper-bruger",
+          buyerName:
+            recipient.name ?? "Equishopper-bruger",
           sellerName: actorName,
           listingTitle: listing.title,
           listingImageUrl,
@@ -490,10 +591,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    /*
+     * AFSLÅET BUD
+     */
     if (offer.status !== "declined") {
       return NextResponse.json(
-        { error: "Buddet er ikke markeret som afslået." },
-        { status: 409 },
+        {
+          error:
+            "Buddet er ikke markeret som afslået.",
+        },
+        { status: 409 }
       );
     }
 
@@ -501,7 +608,9 @@ export async function POST(request: NextRequest) {
       userId: offerSenderId,
       type: "offer_rejected",
       title: "Dit bud er afslået",
-      message: `Dit bud på ${formatMoney(offer.amount)} på "${listing.title}" er blevet afslået.`,
+      message:
+        `Dit bud på ${formatMoney(offer.amount)} ` +
+        `på "${listing.title}" er blevet afslået.`,
       href: `/beskeder/${conversation.id}`,
     });
 
@@ -523,7 +632,10 @@ export async function POST(request: NextRequest) {
       emailId: result.id,
     });
   } catch (error) {
-    console.error("Chat-mail kunne ikke sendes:", error);
+    console.error(
+      "Chat-mail kunne ikke sendes:",
+      error
+    );
 
     return NextResponse.json(
       {
@@ -532,7 +644,7 @@ export async function POST(request: NextRequest) {
             ? error.message
             : "Mailen kunne ikke sendes.",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -570,20 +682,23 @@ async function createChatNotification({
 
   if (error) {
     throw new Error(
-      `Notifikationen kunne ikke oprettes: ${error.message}`,
+      `Notifikationen kunne ikke oprettes: ${error.message}`
     );
   }
 }
 
 async function getAuthenticatedUser(
-  request: NextRequest,
+  request: NextRequest
 ) {
   const authorization =
     request.headers.get("authorization") ?? "";
 
-  const accessToken = authorization.startsWith("Bearer ")
-    ? authorization.slice("Bearer ".length).trim()
-    : "";
+  const accessToken =
+    authorization.startsWith("Bearer ")
+      ? authorization
+          .slice("Bearer ".length)
+          .trim()
+      : "";
 
   if (!accessToken) {
     return null;
@@ -592,7 +707,9 @@ async function getAuthenticatedUser(
   const {
     data: { user },
     error,
-  } = await supabaseAdmin.auth.getUser(accessToken);
+  } = await supabaseAdmin.auth.getUser(
+    accessToken
+  );
 
   if (error || !user) {
     return null;
@@ -603,7 +720,7 @@ async function getAuthenticatedUser(
 
 async function getOffer(
   offerId: string,
-  conversationId: string,
+  conversationId: string
 ): Promise<OfferRow | null> {
   const { data, error } = await supabaseAdmin
     .from("offers")
@@ -631,7 +748,7 @@ async function getOffer(
 }
 
 async function getOfferSenderId(
-  offer: OfferRow,
+  offer: OfferRow
 ) {
   if (!offer.message_id) {
     return offer.buyer_id;
@@ -653,7 +770,7 @@ async function getOfferSenderId(
 
 function getOtherParticipantId(
   conversation: ConversationRow,
-  userId: string,
+  userId: string
 ) {
   return conversation.buyer_id === userId
     ? conversation.seller_id
@@ -662,20 +779,22 @@ function getOtherParticipantId(
 
 async function getRecipient(
   userId: string,
-  profiles: ProfileRow[],
+  profiles: ProfileRow[]
 ) {
   const profile =
-    profiles.find((item) => item.id === userId) ?? null;
+    profiles.find((item) => item.id === userId) ??
+    null;
 
-  const name =
-    getDisplayName(profile) || null;
+  const name = getDisplayName(profile) || null;
 
   const { data, error } =
-    await supabaseAdmin.auth.admin.getUserById(userId);
+    await supabaseAdmin.auth.admin.getUserById(
+      userId
+    );
 
   if (error) {
     throw new Error(
-      `Modtagerens e-mail kunne ikke hentes: ${error.message}`,
+      `Modtagerens e-mail kunne ikke hentes: ${error.message}`
     );
   }
 
@@ -683,7 +802,7 @@ async function getRecipient(
 
   if (!email) {
     throw new Error(
-      "Modtageren har ingen e-mailadresse i Supabase Auth.",
+      "Modtageren har ingen e-mailadresse i Supabase Auth."
     );
   }
 
@@ -694,7 +813,7 @@ async function getRecipient(
 }
 
 function getDisplayName(
-  profile: ProfileRow | null,
+  profile: ProfileRow | null
 ) {
   if (!profile) return "";
 
@@ -710,7 +829,7 @@ function getDisplayName(
 }
 
 function formatMoney(
-  value: number | string,
+  value: number | string
 ) {
   const amount = Number(value);
 
@@ -719,11 +838,13 @@ function formatMoney(
     currency: "DKK",
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(amount) ? amount : 0);
+  }).format(
+    Number.isFinite(amount) ? amount : 0
+  );
 }
 
 function isEmailType(
-  value: unknown,
+  value: unknown
 ): value is EmailType {
   return (
     value === "new-message" ||
@@ -736,6 +857,6 @@ function isEmailType(
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
+    value
   );
 }
