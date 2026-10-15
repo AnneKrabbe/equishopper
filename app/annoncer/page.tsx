@@ -1,11 +1,15 @@
+
 import type { Metadata } from "next";
+import Link from "next/link";
+
 import { supabase } from "@/lib/supabase";
 import ListingCard from "@/components/listings/ListingCard";
 import FilterSidebar from "@/components/filters/FilterSidebar";
 import MobileFilterBar from "@/components/filters/MobileFilterBar";
 import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
-import { Search } from "lucide-react";
+
+import { RotateCcw, Search } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Brugt rideudstyr – køb og sælg rideudstyr",
@@ -91,23 +95,23 @@ export default async function ListingsPage({
       ? parsedMaxPrice
       : null;
 
-let query = supabase
-  .from("listings")
-  .select(`
-    id,
-    title,
-    price,
-    brand,
-    main_category,
-    subcategory,
-    size,
-    trending_score,
-    listing_images (
-      image_url,
-      sort_order
-    )
-  `)
-  .eq("status", "active");
+  let query = supabase
+    .from("listings")
+    .select(`
+      id,
+      title,
+      price,
+      brand,
+      main_category,
+      subcategory,
+      size,
+      trending_score,
+      listing_images (
+        image_url,
+        sort_order
+      )
+    `)
+    .eq("status", "active");
 
   if (searchQuery) {
     const searchValue = escapeSearchValue(searchQuery);
@@ -199,6 +203,8 @@ let query = supabase
 
       <section className="relative z-20 mx-auto -mt-6 max-w-7xl px-3 pb-12 sm:px-5 lg:-mt-20 lg:px-8 lg:pb-20">
         <div className="rounded-[28px] bg-[#fbfaf7] px-3 py-6 shadow-[0_18px_45px_rgba(0,0,0,0.08)] sm:px-5 lg:rounded-[2.5rem] lg:p-10">
+
+          {/* SØGEFELT */}
           <form
             action="/annoncer"
             method="get"
@@ -208,6 +214,7 @@ let query = supabase
               <Search className="ml-3 h-5 w-5 shrink-0 text-stone-400" />
 
               <input
+                key={searchQuery}
                 type="search"
                 name="q"
                 defaultValue={searchQuery}
@@ -218,35 +225,75 @@ let query = supabase
             </div>
 
             {categoryName !== "Alle kategorier" && (
-              <input type="hidden" name="category" value={categoryName} />
+              <input
+                type="hidden"
+                name="category"
+                value={categoryName}
+              />
             )}
 
             {params.group && (
-              <input type="hidden" name="group" value={params.group} />
+              <input
+                type="hidden"
+                name="group"
+                value={params.group}
+              />
             )}
 
             {subcategory && (
-              <input type="hidden" name="subcategory" value={subcategory} />
+              <input
+                type="hidden"
+                name="subcategory"
+                value={subcategory}
+              />
             )}
 
-            {size && <input type="hidden" name="size" value={size} />}
+            {size && (
+              <input
+                type="hidden"
+                name="size"
+                value={size}
+              />
+            )}
 
-            {brand && <input type="hidden" name="brand" value={brand} />}
+            {brand && (
+              <input
+                type="hidden"
+                name="brand"
+                value={brand}
+              />
+            )}
 
             {condition && (
-              <input type="hidden" name="condition" value={condition} />
+              <input
+                type="hidden"
+                name="condition"
+                value={condition}
+              />
             )}
 
             {minPrice !== null && (
-              <input type="hidden" name="minPrice" value={minPrice} />
+              <input
+                type="hidden"
+                name="minPrice"
+                value={minPrice}
+              />
             )}
 
             {maxPrice !== null && (
-              <input type="hidden" name="maxPrice" value={maxPrice} />
+              <input
+                type="hidden"
+                name="maxPrice"
+                value={maxPrice}
+              />
             )}
 
             {sort !== "newest" && (
-              <input type="hidden" name="sort" value={sort} />
+              <input
+                type="hidden"
+                name="sort"
+                value={sort}
+              />
             )}
 
             <button
@@ -258,6 +305,8 @@ let query = supabase
           </form>
 
           <div className="grid gap-8 lg:grid-cols-[320px_1fr] lg:gap-12">
+
+            {/* FILTERSIDEBAR PÅ COMPUTER */}
             <div className="hidden lg:block">
               <FilterSidebar
                 categoryName={categoryName}
@@ -265,7 +314,10 @@ let query = supabase
               />
             </div>
 
+            {/* ANNONCEOVERSIGT */}
             <div className="min-w-0">
+
+              {/* OVERSKRIFT OG SORTERING */}
               <div className="mb-5 border-b border-stone-200 pb-5 lg:mb-8 lg:flex lg:items-center lg:justify-between lg:pb-6">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.3em] text-[#d4af37] lg:text-sm lg:tracking-[0.25em]">
@@ -281,7 +333,11 @@ let query = supabase
 
                 <form className="mt-5 hidden items-center lg:flex">
                   {searchQuery && (
-                    <input type="hidden" name="q" value={searchQuery} />
+                    <input
+                      type="hidden"
+                      name="q"
+                      value={searchQuery}
+                    />
                   )}
 
                   {categoryName !== "Alle kategorier" && (
@@ -309,11 +365,19 @@ let query = supabase
                   )}
 
                   {size && (
-                    <input type="hidden" name="size" value={size} />
+                    <input
+                      type="hidden"
+                      name="size"
+                      value={size}
+                    />
                   )}
 
                   {brand && (
-                    <input type="hidden" name="brand" value={brand} />
+                    <input
+                      type="hidden"
+                      name="brand"
+                      value={brand}
+                    />
                   )}
 
                   {condition && (
@@ -341,14 +405,23 @@ let query = supabase
                   )}
 
                   <select
+                    key={sort}
                     name="sort"
                     defaultValue={sort}
                     className="rounded-full border border-stone-200 bg-white px-6 py-3 text-sm text-[#063f32] outline-none focus:border-[#d4af37]"
                   >
-                    <option value="newest">Nyeste først</option>
-                    <option value="popular">Mest populære</option>
-                    <option value="price-asc">Pris lav til høj</option>
-                    <option value="price-desc">Pris høj til lav</option>
+                    <option value="newest">
+                      Nyeste først
+                    </option>
+                    <option value="popular">
+                      Mest populære
+                    </option>
+                    <option value="price-asc">
+                      Pris lav til høj
+                    </option>
+                    <option value="price-desc">
+                      Pris høj til lav
+                    </option>
                   </select>
 
                   <button
@@ -360,6 +433,32 @@ let query = supabase
                 </form>
               </div>
 
+              {/*
+                NY KNAP: NULSTIL FILTER
+
+                Placeret direkte over annoncekortene.
+                Synlig på både mobil og computer.
+
+                Linket fjerner alle URL-parametre:
+                søgning, kategori, størrelse, mærke,
+                stand, priser og sortering.
+              */}
+              <div className="mb-5 flex justify-end">
+                <Link
+                  href="/annoncer"
+                  scroll={false}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-[#063f32] bg-white px-5 py-2.5 text-sm font-semibold text-[#063f32] shadow-sm transition hover:bg-[#063f32] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#063f32]"
+                  aria-label="Nulstil alle filtre og søgekriterier"
+                >
+                  <RotateCcw
+                    size={16}
+                    aria-hidden="true"
+                  />
+                  Nulstil filter
+                </Link>
+              </div>
+
+              {/* ANNONCER */}
               {listingsCount > 0 ? (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 lg:gap-5 xl:grid-cols-4">
                   {listings.map((listing) => (
@@ -387,32 +486,34 @@ let query = supabase
         </div>
       </section>
 
-
+      {/* SEO-TEKST */}
       <section className="mx-auto mt-10 max-w-4xl px-4 pb-8 text-stone-600 sm:px-5 lg:px-8">
         <h2 className="font-serif text-3xl text-[#063f32]">
           Køb og sælg brugt rideudstyr
         </h2>
 
         <p className="mt-4 leading-7">
-          På Equishopper finder du brugt rideudstyr til både hest og
-          rytter. Gå på opdagelse i brugte sadler, dækkener, trenser,
-          ridetøj og andet udstyr fra private sælgere.
+          På Equishopper finder du brugt rideudstyr til
+          både hest og rytter. Gå på opdagelse i brugte
+          sadler, dækkener, trenser, ridetøj og andet
+          udstyr fra private sælgere.
         </p>
 
         <p className="mt-3 leading-7">
-          Ved at købe rideudstyr brugt kan du finde kvalitetsudstyr til
-          en lavere pris og samtidig give udstyr, der allerede findes,
-          et nyt liv. Har du selv rideudstyr liggende, kan du nemt
-          oprette en annonce og sætte det til salg på Equishopper.
+          Ved at købe rideudstyr brugt kan du finde
+          kvalitetsudstyr til en lavere pris og samtidig
+          give udstyr, der allerede findes, et nyt liv.
+          Har du selv rideudstyr liggende, kan du nemt
+          oprette en annonce og sætte det til salg på
+          Equishopper.
         </p>
       </section>
 
+      {/* MOBIL FILTERMENU */}
       <MobileFilterBar
         categoryName={categoryName}
         listingsCount={listingsCount}
       />
-
     </main>
-    
   );
 }
