@@ -1084,19 +1084,11 @@ export default function ConversationPage() {
                   onChange={(event) =>
                     setMessageBody(event.target.value)
                   }
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      !event.shiftKey
-                    ) {
-                      event.preventDefault();
-                      event.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  rows={1}
+                 
+                  rows={4}
                   maxLength={2000}
                   placeholder={`Skriv en besked til ${profileName}...`}
-                  className="max-h-40 min-h-12 flex-1 resize-none rounded-2xl border border-[#d9ccb4] bg-[#fbfaf7] px-4 py-3 text-[15px] text-[#063f32] outline-none transition placeholder:text-stone-400 focus:border-[#063f32] focus:ring-2 focus:ring-[#063f32]/10"
+                  className="max-h-80 min-h-32 flex-1 resize-y rounded-2xl border border-[#d9ccb4] bg-[#fbfaf7] px-4 py-3 text-[15px] text-[#063f32] outline-none transition placeholder:text-stone-400 focus:border-[#063f32] focus:ring-2 focus:ring-[#063f32]/10"
                 />
 
                 <button
@@ -1109,8 +1101,7 @@ export default function ConversationPage() {
               </div>
 
               <p className="mt-2 px-1 text-xs text-stone-400">
-                Enter sender beskeden. Shift + Enter laver en
-                ny linje.
+                Tryk Enter for at lave en ny linje. Beskeden sendes, når du trykker på Send.
               </p>
             </form>
           </div>
