@@ -98,13 +98,11 @@ type OrderView = OrderRow & {
 
 
 const STATUS_ORDER: FulfillmentStatus[] = [
-  "pending",
   "awaiting_shipment",
+  "disputed",
   "ready_for_pickup",
   "shipped",
   "completed",
-  "disputed",
-  "cancelled",
 ];
 
 export default function SalesPage() {
@@ -508,7 +506,13 @@ export default function SalesPage() {
     }
 
     for (const order of orders) {
+      // Sælgeroversigten viser kun betalte, aktive eller afsluttede handler.
+      // En afbrudt Stripe-betaling kan stadig være "unpaid" i databasen,
+      // indtil reservationen udløber, og skal derfor ikke vises her.
+      if (order.payment_status !== "paid") continue;
+
       const status = getEffectiveStatus(order);
+      if (status === "cancelled" || status === "pending") continue;
       groups.get(status)?.push(order);
     }
 
@@ -536,7 +540,7 @@ export default function SalesPage() {
 
       {shipmentReminderOrder && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-5 sm:items-center"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setShipmentReminderOrder(null);
@@ -553,7 +557,7 @@ export default function SalesPage() {
                 setShipmentReminderOrder(null);
               }
             }}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl sm:p-8"
+            className="my-auto max-h-[calc(100dvh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] bg-white p-5 shadow-2xl sm:p-7"
           >
             <h2
               id="shipment-reminder-title"
@@ -671,7 +675,7 @@ export default function SalesPage() {
           </div>
         )}
 
-        {orders.length === 0 ? (
+        {groupedOrders.length === 0 ? (
           <section className="mt-8 rounded-[30px] border border-[#eadfcb] bg-white p-10 text-center shadow-sm md:p-14">
             <Store className="mx-auto h-12 w-12 text-[#d4af37]" />
 
@@ -821,10 +825,16 @@ export default function SalesPage() {
                             ))}
                           </div>
 
-                          <StatusExplanation
-                            order={order}
-                            status={effectiveStatus}
-                          />
+                          {/* Når DAO-koden er oprettet, vises vejledningen
+                              i den mørkegrønne boks i stedet for to gange. */}
+                          {!(order.shipping_method === "shipping" &&
+                            hasShipment &&
+                            effectiveStatus === "awaiting_shipment") && (
+                            <StatusExplanation
+                              order={order}
+                              status={effectiveStatus}
+                            />
+                          )}
 
                           {canMarkReady && (
                             <div className="mt-5 rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4">
@@ -865,22 +875,42 @@ export default function SalesPage() {
                                     </>
                                   ) : (
                                     <>
-                                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                      <div className="mt-3 rounded-2xl bg-[#063f32] p-5 text-white shadow-sm">
                                         <div className="flex items-start gap-3">
-                                          <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-emerald-700" />
-
-                                          <div>
-                                            <p className="font-semibold text-emerald-900">
+                                          <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-[#d4af37]" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-white">
                                               DAO-fragtkode oprettet
                                             </p>
 
                                             {order.tracking_number && (
-                                              <p className="mt-1 break-all text-sm text-emerald-800">
-                                                DAO-fragtkode:{" "}
-                                                {order.tracking_number}
+                                              <p className="mt-2 break-all text-sm text-white">
+                                                DAO-fragtkode: <span className="font-semibold">{order.tracking_number}</span>
                                               </p>
                                             )}
+
+                                            <p className="mt-3 text-sm leading-6 text-white">
+                                              Skriv koden tydeligt på pakken med vandfast tusch,
+                                              og aflever pakken hos DAO. Markér først ordren
+                                              som sendt, når du har afleveret pakken.
+                                            </p>
                                           </div>
+                                        </div>
+
+                                        <div className="mt-4 border-t border-white/25 pt-4">
+                                          <p className="font-semibold text-[#f2d574]">
+                                            📸 Husk at dokumentere din forsendelse
+                                          </p>
+                                          <p className="mt-2 text-sm leading-6 text-white">
+                                            For din egen sikkerhed anbefaler Equishopper,
+                                            at du tager billeder af varens stand og af,
+                                            hvordan den er pakket og beskyttet. Optag
+                                            gerne en kort video, når pakken lukkes og forsegles.
+                                          </p>
+                                          <p className="mt-2 text-xs leading-5 text-white/85">
+                                            Gem dokumentationen, indtil handlen er afsluttet.
+                                            Det er en anbefaling – ikke et krav.
+                                          </p>
                                         </div>
                                       </div>
 
