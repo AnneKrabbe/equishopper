@@ -54,6 +54,7 @@ type OrderRow = {
   shipping_phone: string | null;
   shipping_note: string | null;
   shipping_carrier: string | null;
+  shipping_max_weight_grams: number | null;
   tracking_number: string | null;
   shipping_shipment_id: string | null;
   shipping_label_url: string | null;
@@ -97,13 +98,11 @@ type OrderView = OrderRow & {
 
 
 const STATUS_ORDER: FulfillmentStatus[] = [
-  "pending",
   "awaiting_shipment",
+  "disputed",
   "ready_for_pickup",
   "shipped",
   "completed",
-  "disputed",
-  "cancelled",
 ];
 
 export default function SalesPage() {
@@ -124,6 +123,7 @@ export default function SalesPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [shipmentReminderOrder, setShipmentReminderOrder] = useState<OrderView | null>(null);
+  const [packageLimitsConfirmed, setPackageLimitsConfirmed] = useState(false);
 
   useEffect(() => {
     void loadOrders();
@@ -179,6 +179,7 @@ export default function SalesPage() {
             shipping_phone,
             shipping_note,
             shipping_carrier,
+            shipping_max_weight_grams,
             tracking_number,
             shipping_shipment_id,
             shipping_label_url,
@@ -391,7 +392,9 @@ export default function SalesPage() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({ packageLimitsConfirmed: true }),
         },
       );
 
@@ -503,7 +506,13 @@ export default function SalesPage() {
     }
 
     for (const order of orders) {
+      // Sælgeroversigten viser kun betalte, aktive eller afsluttede handler.
+      // En afbrudt Stripe-betaling kan stadig være "unpaid" i databasen,
+      // indtil reservationen udløber, og skal derfor ikke vises her.
+      if (order.payment_status !== "paid") continue;
+
       const status = getEffectiveStatus(order);
+      if (status === "cancelled" || status === "pending") continue;
       groups.get(status)?.push(order);
     }
 
@@ -531,7 +540,7 @@ export default function SalesPage() {
 
       {shipmentReminderOrder && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-5 sm:items-center"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setShipmentReminderOrder(null);
@@ -548,29 +557,50 @@ export default function SalesPage() {
                 setShipmentReminderOrder(null);
               }
             }}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl sm:p-8"
+            className="my-auto max-h-[calc(100dvh-2.5rem)] w-full max-w-md overflow-y-auto rounded-[28px] bg-white p-5 shadow-2xl sm:p-7"
           >
             <h2
               id="shipment-reminder-title"
               className="font-serif text-2xl text-[#063f32]"
             >
-              📸 Husk at dokumentere din vare
+              Kontrollér pakken før DAO-fragt
             </h2>
             <p
               id="shipment-reminder-description"
               className="mt-4 text-sm leading-6 text-stone-600"
             >
-              For din egen sikkerhed anbefaler Equishopper, at du dokumenterer
-              varens stand og indpakning grundigt, inden du sender den.
+              Ordren indeholder {shipmentReminderOrder.items.length} {shipmentReminderOrder.items.length === 1 ? "vare" : "varer"}.
+              {" "}Pak varerne samlet i én pakke, og kontrollér den færdige
+              pakkes vægt og mål, inden du bestiller DAO-fragtkoden.
             </p>
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-stone-700">
-              <li>Tag tydelige billeder af varen fra flere vinkler.</li>
-              <li>Fotografér, hvordan varen er pakket og beskyttet.</li>
-              <li>Optag gerne en kort video, hvor pakken lukkes og forsegles.</li>
-            </ul>
+            <div className="mt-4 rounded-2xl bg-[#f8f6f1] p-4 text-sm leading-7 text-stone-700">
+              <p className="font-semibold text-[#063f32]">
+                Valgt vægtklasse: maks. {Number(shipmentReminderOrder.shipping_max_weight_grams ?? 0) / 1000} kg
+              </p>
+              <p>Maksimal længde: 80 cm</p>
+              <p>Længde + omkreds: maks. 240 cm</p>
+              <p className="text-xs leading-5 text-stone-500">
+                Omkreds beregnes som 2 × bredde + 2 × højde.
+                Pakken kan omtrent svare til en mellemstor flyttekasse,
+                men dens faktiske mål skal stadig kontrolleres.
+              </p>
+            </div>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#eadfcb] p-3 text-sm leading-6 text-stone-700">
+              <input
+                type="checkbox"
+                checked={packageLimitsConfirmed}
+                onChange={(event) => setPackageLimitsConfirmed(event.target.checked)}
+                className="mt-1 h-4 w-4 accent-[#063f32]"
+              />
+              <span>
+                Jeg bekræfter, at den færdigpakkede forsendelse overholder
+                den valgte vægtklasse og DAO&apos;s størrelsesgrænser.
+              </span>
+            </label>
             <p className="mt-4 text-xs leading-5 text-stone-500">
-              Gem dokumentationen, indtil handlen er afsluttet. Det er en
-              anbefaling og ikke et krav.
+              Vi anbefaler også, at du tager billeder af varen og indpakningen,
+              inden pakken sendes. Hvis pakken ikke kan overholde grænserne,
+              må du ikke oprette fragtkoden. Kontakt Equishopper for hjælp.
             </p>
             <div className="mt-6 flex flex-col gap-3">
               <button
@@ -578,15 +608,17 @@ export default function SalesPage() {
                 onClick={() => {
                   const order = shipmentReminderOrder;
                   setShipmentReminderOrder(null);
+                  setPackageLimitsConfirmed(false);
                   void createShipmentCode(order);
                 }}
-                className="rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a]"
+                disabled={!packageLimitsConfirmed}
+                className="rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Forstået – fortsæt til fragtlabel
+                Bekræft og opret DAO-fragtkode
               </button>
               <button
                 type="button"
-                onClick={() => setShipmentReminderOrder(null)}
+                onClick={() => { setShipmentReminderOrder(null); setPackageLimitsConfirmed(false); }}
                 autoFocus
                 className="rounded-full border border-[#063f32] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#063f32] hover:text-white"
               >
@@ -643,7 +675,7 @@ export default function SalesPage() {
           </div>
         )}
 
-        {orders.length === 0 ? (
+        {groupedOrders.length === 0 ? (
           <section className="mt-8 rounded-[30px] border border-[#eadfcb] bg-white p-10 text-center shadow-sm md:p-14">
             <Store className="mx-auto h-12 w-12 text-[#d4af37]" />
 
@@ -793,10 +825,16 @@ export default function SalesPage() {
                             ))}
                           </div>
 
-                          <StatusExplanation
-                            order={order}
-                            status={effectiveStatus}
-                          />
+                          {/* Når DAO-koden er oprettet, vises vejledningen
+                              i den mørkegrønne boks i stedet for to gange. */}
+                          {!(order.shipping_method === "shipping" &&
+                            hasShipment &&
+                            effectiveStatus === "awaiting_shipment") && (
+                            <StatusExplanation
+                              order={order}
+                              status={effectiveStatus}
+                            />
+                          )}
 
                           {canMarkReady && (
                             <div className="mt-5 rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4">
@@ -814,7 +852,10 @@ export default function SalesPage() {
 
                                       <button
                                         type="button"
-                                        onClick={() => setShipmentReminderOrder(order)}
+                                        onClick={() => {
+                                           setPackageLimitsConfirmed(false);
+                                           setShipmentReminderOrder(order);
+                                         }}
                                         disabled={
                                           generatingShipmentCodeOrderId === order.id ||
                                           submittingOrderId === order.id
@@ -834,22 +875,42 @@ export default function SalesPage() {
                                     </>
                                   ) : (
                                     <>
-                                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                      <div className="mt-3 rounded-2xl bg-[#063f32] p-5 text-white shadow-sm">
                                         <div className="flex items-start gap-3">
-                                          <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-emerald-700" />
-
-                                          <div>
-                                            <p className="font-semibold text-emerald-900">
+                                          <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-[#d4af37]" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-white">
                                               DAO-fragtkode oprettet
                                             </p>
 
                                             {order.tracking_number && (
-                                              <p className="mt-1 break-all text-sm text-emerald-800">
-                                                DAO-fragtkode:{" "}
-                                                {order.tracking_number}
+                                              <p className="mt-2 break-all text-sm text-white">
+                                                DAO-fragtkode: <span className="font-semibold">{order.tracking_number}</span>
                                               </p>
                                             )}
+
+                                            <p className="mt-3 text-sm leading-6 text-white">
+                                              Skriv koden tydeligt på pakken med vandfast tusch,
+                                              og aflever pakken hos DAO. Markér først ordren
+                                              som sendt, når du har afleveret pakken.
+                                            </p>
                                           </div>
+                                        </div>
+
+                                        <div className="mt-4 border-t border-white/25 pt-4">
+                                          <p className="font-semibold text-[#f2d574]">
+                                            📸 Husk at dokumentere din forsendelse
+                                          </p>
+                                          <p className="mt-2 text-sm leading-6 text-white">
+                                            For din egen sikkerhed anbefaler Equishopper,
+                                            at du tager billeder af varens stand og af,
+                                            hvordan den er pakket og beskyttet. Optag
+                                            gerne en kort video, når pakken lukkes og forsegles.
+                                          </p>
+                                          <p className="mt-2 text-xs leading-5 text-white/85">
+                                            Gem dokumentationen, indtil handlen er afsluttet.
+                                            Det er en anbefaling – ikke et krav.
+                                          </p>
                                         </div>
                                       </div>
 

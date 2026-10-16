@@ -206,6 +206,19 @@ export async function POST(
       );
     }
 
+    // Bekræftelsen skal medsendes ved oprettelse af en NY forsendelse.
+    // Eksisterende forsendelser returneres ovenfor uden at oprette en ny.
+    const confirmationBody = await request.json().catch(() => null) as
+      | { packageLimitsConfirmed?: unknown }
+      | null;
+
+    if (confirmationBody?.packageLimitsConfirmed !== true) {
+      return NextResponse.json(
+        { error: "Bekræft pakkens vægt og mål, før du opretter DAO-fragtkoden." },
+        { status: 400 },
+      );
+    }
+
     const weightGrams = Number(order.shipping_max_weight_grams);
 
     if (!Number.isFinite(weightGrams) || weightGrams <= 0) {
