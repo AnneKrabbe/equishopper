@@ -12,6 +12,7 @@ type CheckoutBody = {
   city?: string;
   phone?: string;
   shippingNote?: string;
+  combinedShippingProductId?: string;
 
   servicePoint?: {
     id?: string;
@@ -89,6 +90,7 @@ type SellerFeeResult = {
 function buildShippingSnapshot(
   listings: ListingShippingRow[],
   shippingMethod: "shipping" | "pickup",
+  combinedProduct: ShippingProductRow | null,
 ): ShippingSnapshot {
   if (shippingMethod === "pickup") {
     if (listings.some((listing) => listing.pickup_available === false)) {
@@ -155,7 +157,30 @@ function buildShippingSnapshot(
     return product;
   });
 
-const shippingPriceAmount = products.reduce(
+  if (products.length > 1) {
+    if (!combinedProduct || !combinedProduct.active || !combinedProduct.outbound_enabled ||
+        combinedProduct.package_group !== "dao_shop" ||
+        combinedProduct.carrier.toLowerCase() !== "dao" ||
+        combinedProduct.currency.toLowerCase() !== "dkk" ||
+        !Number.isInteger(combinedProduct.price_amount) || combinedProduct.price_amount <= 0 ||
+        !Number.isFinite(combinedProduct.max_weight_grams) || combinedProduct.max_weight_grams <= 0) {
+      throw new Error("Vælg en gyldig fælles DAO-pakkeklasse.");
+    }
+    const amount = Math.ceil(combinedProduct.price_amount / 100) * 100;
+    return {
+      shippingPrice: amount / 100,
+      shippingPriceAmount: amount,
+      shippingProductId: combinedProduct.id,
+      shippingProductCode: combinedProduct.product_code,
+      shippingProductName: combinedProduct.name,
+      shippingPackageGroup: combinedProduct.package_group,
+      shippingCurrency: "dkk",
+      shippingDeliveryMethod: combinedProduct.delivery_method,
+      shippingMaxWeightGrams: combinedProduct.max_weight_grams,
+    };
+  }
+
+  const shippingPriceAmount = products.reduce(
   (sum, product) =>
     sum + Math.ceil(product.price_amount / 100) * 100,
   0,
@@ -177,17 +202,7 @@ const shippingPriceAmount = products.reduce(
     };
   }
 
-  return {
-    shippingPrice: shippingPriceAmount / 100,
-    shippingPriceAmount,
-    shippingProductId: null,
-    shippingProductCode: "DAO_MULTI_PACKAGE",
-    shippingProductName: `DAO Shop2Shop · ${products.length} pakker`,
-    shippingPackageGroup: "dao_multi_package",
-    shippingCurrency: "dkk",
-    shippingDeliveryMethod: "code_on_package",
-    shippingMaxWeightGrams: null,
-  };
+  throw new Error("Uventet antal fragtprodukter.");
 }
 
 export async function POST(request: NextRequest) {
@@ -435,11 +450,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const shippingSnapshot =
-      buildShippingSnapshot(
-        listingData as unknown as ListingShippingRow[],
-        body.shippingMethod,
-      );
+    // Slå køberens valgte produkt op på serveren. Pris og vægt læses aldrig fra browseren.
+    let combinedProduct: ShippingProductRow | null = null;
+    if (body.shippingMethod === "shipping" && listingIds.length > 1) {
+      if (!body.combinedShippingProductId ||
+          !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(body.combinedShippingProductId)) {
+        throw new Error("Vælg en samlet DAO-pakkeklasse.");
+      }
+      const { data: chosenProduct, error: chosenError } = await supabaseAdmin
+        .from("shipping_products")
+        .select("id, carrier, product_code, name, package_group, max_weight_grams, price_amount, currency, delivery_method, active, outbound_enabled")
+        .eq("id", body.combinedShippingProductId)
+        .maybeSingle();
+      if (chosenError || !chosenProduct) throw new Error("DAO-pakkeklassen findes ikke.");
+      combinedProduct = chosenProduct as ShippingProductRow;
+    }
+    const shippingSnapshot = buildShippingSnapshot(
+      listingData as unknown as ListingShippingRow[],
+      body.shippingMethod,
+      combinedProduct,
+    );
 
     const subtotal = Number(order.subtotal);
     const buyerProtectionFee =

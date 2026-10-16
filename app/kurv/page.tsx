@@ -55,6 +55,13 @@ type CartRow = {
 
 type ShippingMethod = "shipping" | "pickup";
 
+type DaoShippingOption = {
+  id: string;
+  name: string;
+  max_weight_grams: number;
+  price_amount: number;
+};
+
 type CheckoutResponse = {
   url?: string;
   error?: string;
@@ -102,6 +109,8 @@ export default function CartPage() {
   const router = useRouter();
 
   const [items, setItems] = useState<CartRow[]>([]);
+  const [daoOptions, setDaoOptions] = useState<DaoShippingOption[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
   const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -325,6 +334,19 @@ export default function CartPage() {
 
       setItems(validRows);
 
+      // Kun aktive DAO-klasser. Ingen hardcodede priser.
+      const { data: shippingOptions, error: shippingOptionsError } = await supabase
+        .from("shipping_products")
+        .select("id, name, max_weight_grams, price_amount")
+        .eq("carrier", "dao")
+        .eq("package_group", "dao_shop")
+        .eq("active", true)
+        .eq("outbound_enabled", true)
+        .order("max_weight_grams", { ascending: true });
+      if (shippingOptionsError) throw shippingOptionsError;
+      setDaoOptions((shippingOptions ?? []) as DaoShippingOption[]);
+      setSelectedPackageId("");
+
       const shippingUnavailable = validRows.some(
         (row) => row.listing?.shipping_available === false,
       );
@@ -389,32 +411,35 @@ export default function CartPage() {
     [items],
   );
 
-  const shippingTotal = useMemo(() => {
-    if (
-      items.length === 0 ||
-      shippingMethod !== "shipping"
-    ) {
-      return 0;
-    }
+  const singleSeller = items.length > 0 &&
+    new Set(items.map((item) => item.listing?.seller_id)).size === 1;
+  const combinedShipping = singleSeller && items.length > 1;
 
+  // 70 % er kun et vejledende skøn, ikke en målt vægt.
+  const estimatedGrams = items.reduce(
+    (sum, item) => sum + (item.listing?.shipping_product?.max_weight_grams ?? 0),
+    0,
+  ) * 0.7;
+  const suggestedPackage = combinedShipping
+    ? daoOptions.find((option) => option.max_weight_grams >= estimatedGrams) ??
+      daoOptions[daoOptions.length - 1] ?? null
+    : null;
+  const selectedPackage = daoOptions.find((option) => option.id === selectedPackageId) ??
+    suggestedPackage;
+
+  const shippingTotal = useMemo(() => {
+    if (items.length === 0 || shippingMethod !== "shipping") return 0;
+    if (combinedShipping) {
+      return selectedPackage ? Math.ceil(selectedPackage.price_amount / 100) : 0;
+    }
     const shippingOere = items.reduce((sum, item) => {
       const product = item.listing?.shipping_product;
-
-      if (
-        !item.listing?.shipping_available ||
-        !product ||
-        !product.active ||
-        !product.outbound_enabled ||
-        product.carrier.toLowerCase() !== "dao"
-      ) {
-        return sum;
-      }
-
+      if (!item.listing?.shipping_available || !product || !product.active ||
+          !product.outbound_enabled || product.carrier.toLowerCase() !== "dao") return sum;
       return sum + Math.ceil(product.price_amount / 100) * 100;
     }, 0);
-
     return shippingOere / 100;
-  }, [items, shippingMethod]);
+  }, [items, shippingMethod, combinedShipping, selectedPackage]);
 
   const buyerProtectionFee =
     items.length > 0
@@ -471,6 +496,7 @@ export default function CartPage() {
       setItems((current) =>
         current.filter((item) => item.id !== cartItemId),
       );
+      setSelectedPackageId("");
 
       window.dispatchEvent(
         new Event("equishopper-cart-changed"),
@@ -487,12 +513,21 @@ export default function CartPage() {
     }
   }
 
-  async function startCheckout(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  function startCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    void executeCheckout();
+  }
 
-    if (items.length === 0 || submitting) {
+  async function executeCheckout() {
+
+    if (items.length === 0 || submitting) return;
+    if (!singleSeller) {
+      setErrorMessage("Kurven kan endnu kun betales med varer fra én sælger ad gangen.");
+      return;
+    }
+    if (combinedShipping && shippingMethod === "shipping" &&
+        (!selectedPackage || !daoOptions.some((option) => option.id === selectedPackage.id))) {
+      setErrorMessage("DAO-fragtklasserne kunne ikke hentes. Genindlæs siden og prøv igen.");
       return;
     }
 
@@ -572,6 +607,8 @@ export default function CartPage() {
         },
         body: JSON.stringify({
           shippingMethod,
+          combinedShippingProductId: combinedShipping && shippingMethod === "shipping"
+            ? selectedPackage?.id : undefined,
           fullName: fullName.trim(),
           addressLine1: addressLine1.trim(),
           postalCode: postalCode.trim(),
@@ -1111,6 +1148,50 @@ export default function CartPage() {
                     label="Fragt"
                     value={shippingTotal}
                   />
+                  {combinedShipping && shippingMethod === "shipping" && (
+                    <div className="rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4">
+                      <p className="font-semibold text-[#063f32]">Samlet DAO-fragt er valgt automatisk</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-600">
+                        Vi foreslår en pakkeklasse ud fra 70 % af varernes registrerede
+                        maksimumvægte. Det er kun et skøn; du kan vælge en anden klasse.
+                      </p>
+                      {daoOptions.length > 0 ? (
+                        <>
+                          <label htmlFor="combined-dao-package" className="mt-3 block text-xs font-semibold text-[#063f32]">
+                            Pakkeklasse – ændr kun, hvis du ønsker det
+                          </label>
+                          <select
+                            id="combined-dao-package"
+                            value={selectedPackage?.id ?? ""}
+                            onChange={(event) => setSelectedPackageId(event.target.value)}
+                            disabled={submitting}
+                            className="mt-2 w-full rounded-xl border border-[#d9ccb4] bg-white p-3 text-sm text-[#063f32]"
+                          >
+                            {daoOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                Op til {option.max_weight_grams / 1000} kg · {Math.ceil(option.price_amount / 100)} kr.
+                                {suggestedPackage?.id === option.id ? " · Foreslået" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {selectedPackage && suggestedPackage &&
+                            selectedPackage.max_weight_grams < suggestedPackage.max_weight_grams && (
+                              <p className="mt-2 text-xs text-amber-800">
+                                Du har valgt en mindre klasse end foreslået. Sælgeren skal sikre,
+                                at den færdige pakke overholder vægt og mål.
+                              </p>
+                            )}
+                          <p className="mt-2 text-xs leading-5 text-stone-600">
+                            Sælgeren skal bekræfte vægt og pakkemål før DAO-koden oprettes.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm text-red-700">
+                          Fragtklasserne kunne ikke indlæses. Genindlæs siden, før du betaler.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <SummaryRow
                     label="Køberbeskyttelse"
@@ -1171,6 +1252,7 @@ export default function CartPage() {
                   disabled={
                     submitting ||
                     !acceptedTerms ||
+                    (combinedShipping && shippingMethod === "shipping" && !daoOptions.length) ||
                     (shippingMethod === "shipping" &&
                       (hasShippingUnavailableItem ||
                         !selectedServicePoint)) ||
@@ -1207,9 +1289,10 @@ export default function CartPage() {
                   <MapPin className="mt-0.5 h-5 w-5 flex-none text-[#b79a3d]" />
 
                   <p>
-                    DAO-fragten beregnes ud fra den pakkeklasse,
-                    sælger valgte på annoncen. Din valgte pakkeshop,
-                    fragtdata og pris gemmes på ordren ved checkout.
+                    Ved én vare bruges annoncens DAO-klasse. Ved flere varer
+                    fra samme sælger beregnes samlet fragt automatisk.
+                    Du kan ændre pakkeklassen i ordreoversigten. Sælgeren
+                    skal kontrollere vægt og mål inden afsendelse.
                   </p>
                 </div>
               </section>
