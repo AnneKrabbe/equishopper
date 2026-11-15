@@ -92,7 +92,7 @@ export default function Hero({
                     href="/annoncer"
                     className="mt-3 inline-flex text-sm font-medium text-white underline decoration-white decoration-2 underline-offset-4 transition hover:text-[#d4af37]"
                   >
-                    Avanceret søgning
+                    Se alt brugt rideudstyr
                   </Link>
                 </div>
               )}

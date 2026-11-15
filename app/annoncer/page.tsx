@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { supabase } from "@/lib/supabase";
+import { getCategoryGroups, getSubcategories } from "@/lib/listingCategories";
 import ListingCard from "@/components/listings/ListingCard";
 import FilterSidebar from "@/components/filters/FilterSidebar";
 import MobileFilterBar from "@/components/filters/MobileFilterBar";
@@ -28,12 +29,33 @@ export const metadata: Metadata = {
 };
 
 const categoryShortcuts = [
-  { label: "Brugte sadler", category: "Til hesten", subcategory: "Sadler" },
-  { label: "Vinterdækkener", category: "Til hesten", subcategory: "Vinterdækken" },
   {
-    label: "Brugte ridebukser",
-    category: "Til rytteren",
-    subcategory: "Ridebukser og tights",
+    label: "Dækkener",
+    query: { category: "Til hesten", group: "Dækkener" },
+  },
+  {
+    label: "Trenser",
+    query: { category: "Til hesten", subcategory: "Trenser, tøjler og tilbehør" },
+  },
+  {
+    label: "Sadler",
+    query: { category: "Til hesten", subcategory: "Sadler" },
+  },
+  {
+    label: "Ridebukser",
+    query: { category: "Til rytteren", subcategory: "Ridebukser og tights" },
+  },
+  {
+    label: "Jakker",
+    query: { category: "Til rytteren", subcategory: "Jakker og frakker" },
+  },
+  {
+    label: "Underlag",
+    query: { category: "Til hesten", subcategory: "Underlag og pads" },
+  },
+  {
+    label: "Ridehjelme",
+    query: { category: "Til rytteren", subcategory: "Ridehjelme" },
   },
 ];
 
@@ -82,7 +104,11 @@ export default async function ListingsPage({
 
   const searchQuery = params.q?.trim() || "";
   const categoryName = params.category || "Alle kategorier";
+  const group = params.group || "";
   const subcategory = params.subcategory || "";
+  const groupSubcategories = getCategoryGroups(categoryName).includes(group)
+    ? getSubcategories(categoryName, group)
+    : [];
   const size = params.size || "";
   const brand = params.brand || "";
   const condition = params.condition?.trim() || "";
@@ -143,6 +169,8 @@ export default async function ListingsPage({
 
   if (subcategory) {
     query = query.eq("subcategory", subcategory);
+  } else if (groupSubcategories.length > 0) {
+    query = query.in("subcategory", groupSubcategories);
   }
 
   if (size) {
@@ -242,11 +270,11 @@ export default async function ListingsPage({
               />
             )}
 
-            {params.group && (
+            {group && (
               <input
                 type="hidden"
                 name="group"
-                value={params.group}
+                value={group}
               />
             )}
 
@@ -316,11 +344,11 @@ export default async function ListingsPage({
 
           <nav aria-label="Genveje til rideudstyr" className="mb-8">
             <ul className="flex flex-wrap gap-2 sm:gap-3">
-              {categoryShortcuts.map(({ label, category, subcategory }) => (
-                <li key={subcategory}>
+              {categoryShortcuts.map(({ label, query }) => (
+                <li key={label}>
                   <Link
-                    href={{ pathname: "/annoncer", query: { category, subcategory } }}
-                    className="inline-flex rounded-full border border-[#eadfcb] bg-white px-4 py-2 text-sm font-medium text-[#063f32] transition hover:border-[#d4af37] hover:bg-[#f8f6f1]"
+                    href={{ pathname: "/annoncer", query }}
+                    className="inline-flex rounded-full bg-[#d4af37] px-4 py-2 text-sm font-semibold text-[#063f32] transition hover:bg-[#c6a130] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#063f32]"
                   >
                     {label}
                   </Link>
@@ -373,11 +401,11 @@ export default async function ListingsPage({
                     />
                   )}
 
-                  {params.group && (
+                  {group && (
                     <input
                       type="hidden"
                       name="group"
-                      value={params.group}
+                      value={group}
                     />
                   )}
 
