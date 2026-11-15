@@ -27,6 +27,16 @@ export const metadata: Metadata = {
   },
 };
 
+const categoryShortcuts = [
+  { label: "Brugte sadler", category: "Til hesten", subcategory: "Sadler" },
+  { label: "Vinterdækkener", category: "Til hesten", subcategory: "Vinterdækken" },
+  {
+    label: "Brugte ridebukser",
+    category: "Til rytteren",
+    subcategory: "Ridebukser og tights",
+  },
+];
+
 type Listing = {
   id: string;
   title: string;
@@ -304,6 +314,21 @@ export default async function ListingsPage({
             </button>
           </form>
 
+          <nav aria-label="Genveje til rideudstyr" className="mb-8">
+            <ul className="flex flex-wrap gap-2 sm:gap-3">
+              {categoryShortcuts.map(({ label, category, subcategory }) => (
+                <li key={subcategory}>
+                  <Link
+                    href={{ pathname: "/annoncer", query: { category, subcategory } }}
+                    className="inline-flex rounded-full border border-[#eadfcb] bg-white px-4 py-2 text-sm font-medium text-[#063f32] transition hover:border-[#d4af37] hover:bg-[#f8f6f1]"
+                  >
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
           <div className="grid gap-8 lg:grid-cols-[320px_1fr] lg:gap-12">
 
             {/* FILTERSIDEBAR PÅ COMPUTER */}
@@ -486,26 +511,22 @@ export default async function ListingsPage({
         </div>
       </section>
 
-      {/* SEO-TEKST */}
       <section className="mx-auto mt-10 max-w-4xl px-4 pb-8 text-stone-600 sm:px-5 lg:px-8">
         <h2 className="font-serif text-3xl text-[#063f32]">
           Køb og sælg brugt rideudstyr
         </h2>
 
         <p className="mt-4 leading-7">
-          På Equishopper finder du brugt rideudstyr til
-          både hest og rytter. Gå på opdagelse i brugte
-          sadler, dækkener, trenser, ridetøj og andet
-          udstyr fra private sælgere.
+          Find brugt rideudstyr fra private sælgere. Brug filtrene til at
+          vælge størrelse, mærke, stand og pris, og se billederne og
+          varebeskrivelsen, før du køber.
         </p>
 
         <p className="mt-3 leading-7">
-          Ved at købe rideudstyr brugt kan du finde
-          kvalitetsudstyr til en lavere pris og samtidig
-          give udstyr, der allerede findes, et nyt liv.
-          Har du selv rideudstyr liggende, kan du nemt
-          oprette en annonce og sætte det til salg på
-          Equishopper.
+          Kig efter sædestørrelse og bomvidde på sadler, længde og fyld på
+          vinterdækkener og størrelsesmærkning på ridebukser. Spørg sælger,
+          hvis du mangler et mål eller et billede af et slidt område. Har du
+          selv udstyr til salg, kan du oprette en annonce på Equishopper.
         </p>
       </section>
 
