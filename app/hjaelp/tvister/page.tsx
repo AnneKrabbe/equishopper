@@ -166,6 +166,15 @@ const disputeCases = [
   },
   {
     no: 13,
+    situation: "Pakken ankommer tom",
+    review:
+      "Køber bør oprette en tvist hurtigt og gemme emballagen. Vi gennemgår købers billeder af pakken, fragtlabelen og lukningen samt eventuelle billeder eller video fra åbningen. Vi beder sælger om fotos og video af indholdet og indpakningen, hvis de findes. Vi ser også på tracking og eventuelle oplysninger fra fragtpartneren om vægt eller skader på pakken.",
+    result:
+      "Hvis dokumentationen samlet peger på, at varen manglede ved levering, kan køber få fuld refundering. Hvis dokumentationen peger på, at varen blev leveret, kan betalingen frigives til sælger. Vi kan bede om flere oplysninger, før vi træffer en afgørelse.",
+    returnRequired: "Nej",
+  },
+  {
+    no: 14,
     situation: "Reklamation indgives sent",
     review:
       "Tidspunktet for reklamationen, hvornår varen blev modtaget, og om den sene anmeldelse påvirker muligheden for at vurdere sagen.",
@@ -174,7 +183,7 @@ const disputeCases = [
     returnRequired: "Nej",
   },
   {
-    no: 14,
+    no: 15,
     situation: "Utilstrækkelig dokumentation",
     review:
       "Den dokumentation, Equishopper har modtaget, og om parterne har uploadet det materiale, de er blevet anmodet om.",
@@ -183,7 +192,7 @@ const disputeCases = [
     returnRequired: "Afhænger",
   },
   {
-    no: 15,
+    no: 16,
     situation: "Begge parter har delvist ret",
     review:
       "Den samlede dokumentation og sagens konkrete omstændigheder.",
@@ -273,6 +282,20 @@ export default function DisputeHelpPage() {
                     </li>
                   ))}
                 </ul>
+
+                <div className="mt-7 rounded-2xl border border-[#d4af37]/40 bg-[#fffdf7] p-5 text-sm leading-6 text-stone-700">
+                  <h3 className="font-semibold text-[#063f32]">
+                    Til sælger – dokumentér pakkens indhold før afsendelse
+                  </h3>
+                  <p className="mt-2">
+                    Vi opfordrer dig til at tage både fotos og video af
+                    forsendelsens indhold. Vis varen og alt tilbehør, der
+                    følger med, og film gerne, mens du lægger det hele i
+                    pakken og lukker den. Tag også et foto af den lukkede
+                    pakke med fragtlabelen eller fragtkoden synlig. Gem
+                    materialet, til handlen er afsluttet.
+                  </p>
+                </div>
 
                 <div className="mt-7 rounded-2xl bg-[#f8f5ee] p-5 text-sm leading-6 text-stone-600">
                   Det er en god idé at dokumentere et problem hurtigt efter
