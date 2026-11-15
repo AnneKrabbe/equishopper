@@ -682,6 +682,12 @@ export async function POST(request: NextRequest) {
         seller_fee_campaign_id:
           feeResult?.campaign_id ?? null,
 
+        seller_fee:
+          platformFeeOere / 100,
+
+        seller_payout:
+          sellerPayoutOere / 100,
+
         platform_fee_amount:
           platformFeeOere,
 
