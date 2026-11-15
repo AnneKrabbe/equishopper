@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { track } from "@vercel/analytics/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { stripe } from "@/lib/stripe";
@@ -885,6 +886,7 @@ export async function POST(request: NextRequest) {
      * Gem Checkout Session-id.
      */
     const {
+      data: savedOrder,
       error: updateError,
     } = await supabaseAdmin
       .from("orders")
@@ -893,7 +895,9 @@ export async function POST(request: NextRequest) {
           session.id,
       })
       .eq("id", order.id)
-      .eq("payment_status", "unpaid");
+      .eq("payment_status", "unpaid")
+      .select("id")
+      .maybeSingle();
 
     if (updateError) {
       throw new Error(
@@ -905,6 +909,14 @@ export async function POST(request: NextRequest) {
       throw new Error(
         "Stripe returnerede ikke et checkout-link."
       );
+    }
+
+    if (savedOrder) {
+      try {
+        await track("checkout_started");
+      } catch (error) {
+        console.warn("Kunne ikke registrere checkout_started:", error);
+      }
     }
 
     return NextResponse.json({

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { track } from "@vercel/analytics/server";
 import Stripe from "stripe";
 
 import { sendItemSoldEmail } from "@/lib/email/email-service";
@@ -8,7 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export const runtime = "nodejs";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
   "https://www.equishopper.dk";
 
 type PaidOrderRow = {
@@ -147,6 +148,10 @@ export async function POST(request: NextRequest) {
 async function handleCheckoutPaid(
   session: Stripe.Checkout.Session,
 ) {
+  if (session.payment_status !== "paid") {
+    return;
+  }
+
   const orderId =
     session.metadata?.order_id ||
     session.client_reference_id;
@@ -220,6 +225,12 @@ async function handleCheckoutPaid(
 
   if (!updatedOrder) {
     return;
+  }
+
+  try {
+    await track("purchase_completed");
+  } catch (error) {
+    console.warn("Kunne ikke registrere purchase_completed:", error);
   }
 
   const order = updatedOrder as PaidOrderRow;
