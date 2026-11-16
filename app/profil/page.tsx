@@ -1085,6 +1085,15 @@ export default function ProfilePage() {
                     />
                   </FormField>
 
+                  {userId && email && (
+                    <a
+                      href="#adgangskode"
+                      className="w-fit text-sm font-semibold text-[#0b5a47] underline underline-offset-4 sm:col-span-2"
+                    >
+                      Skift adgangskode
+                    </a>
+                  )}
+
                   <FormField
                     label="Telefonnummer"
                     className="sm:col-span-2"
@@ -1462,6 +1471,12 @@ export default function ProfilePage() {
                 </button>
               </div>
             </form>
+
+            {userId && email && (
+              <div id="adgangskode" className="mt-6 scroll-mt-36">
+                <ChangePasswordForm email={email} />
+              </div>
+            )}
           </div>
         </section>
       </main>
@@ -1471,6 +1486,199 @@ export default function ProfilePage() {
 
 const inputClassName =
   "w-full rounded-2xl border border-stone-300 bg-white px-4 py-3.5 text-stone-800 outline-none transition placeholder:text-stone-400 focus:border-[#0b5a47] focus:ring-4 focus:ring-[#0b5a47]/10";
+
+function ChangePasswordForm({ email }: { email: string }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+
+  async function sendCode() {
+    setCode("");
+    const { error } = await supabase.auth.reauthenticate();
+    if (error) {
+      setErrorMessage(
+        "Vi kunne ikke sende en bekræftelseskode. Prøv igen om lidt.",
+      );
+      return;
+    }
+    setStatusMessage("Vi har sendt en bekræftelseskode til din e-mail.");
+  }
+
+  async function handleSendCode() {
+    if (busy) return;
+    setBusy(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      await sendCode();
+    } catch {
+      setErrorMessage(
+        "Vi kunne ikke sende en bekræftelseskode. Prøv igen om lidt.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+
+    setErrorMessage("");
+    setStatusMessage("");
+
+    if (newPassword.length < 8) {
+      setErrorMessage("Adgangskoden skal være på mindst 8 tegn.");
+      return;
+    }
+
+    if (newPassword !== confirmation) {
+      setErrorMessage("De to nye adgangskoder skal være ens.");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setErrorMessage("Vælg en anden adgangskode end din nuværende.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        current_password: currentPassword,
+        password: newPassword,
+        ...(needsCode ? { nonce: code.trim() } : {}),
+      });
+
+      if (error) {
+        switch (error.code) {
+          case "reauthentication_needed":
+          case "reauth_nonce_missing":
+            setNeedsCode(true);
+            await sendCode();
+            return;
+          case "current_password_mismatch":
+            setErrorMessage("Den nuværende adgangskode er forkert.");
+            return;
+          case "reauthentication_not_valid":
+          case "otp_expired":
+            setErrorMessage("Koden er forkert eller udløbet. Prøv igen, eller send en ny kode.");
+            return;
+          case "same_password":
+            setErrorMessage("Vælg en anden adgangskode end din nuværende.");
+            return;
+          case "weak_password":
+            setErrorMessage("Den nye adgangskode opfylder ikke sikkerhedskravene. Prøv en stærkere adgangskode.");
+            return;
+          case "session_expired":
+          case "session_not_found":
+            setErrorMessage("Din session er udløbet. Log ind igen for at skifte adgangskode.");
+            return;
+          default:
+            throw error;
+        }
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmation("");
+      setCode("");
+      setNeedsCode(false);
+      setStatusMessage("Din adgangskode er ændret.");
+    } catch {
+      setErrorMessage("Adgangskoden kunne ikke ændres. Prøv igen om lidt.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <FormSection title="Skift adgangskode">
+      <form method="post" onSubmit={handleChangePassword} aria-label="Skift adgangskode">
+        <fieldset disabled={busy} className="max-w-xl space-y-5">
+          <input type="hidden" name="username" autoComplete="username" value={email} />
+          <FormField label="Nuværende adgangskode" required>
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              className={inputClassName}
+            />
+          </FormField>
+          <FormField label="Ny adgangskode" hint="Mindst 8 tegn." required>
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              className={inputClassName}
+            />
+          </FormField>
+          <FormField label="Gentag ny adgangskode" required>
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              className={inputClassName}
+            />
+          </FormField>
+          {needsCode && (
+            <div className="space-y-3">
+              <FormField label="Bekræftelseskode fra din e-mail" required>
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  pattern="[0-9]+"
+                  required
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  className={inputClassName}
+                />
+              </FormField>
+              <button
+                type="button"
+                onClick={() => void handleSendCode()}
+                className="text-sm font-semibold text-[#0b5a47] underline underline-offset-4 disabled:opacity-60"
+              >
+                Send ny kode
+              </button>
+            </div>
+          )}
+          {errorMessage && (
+            <p role="alert" className="text-sm text-red-700">{errorMessage}</p>
+          )}
+          <p role="status" className="text-sm font-medium text-[#063f32]">
+            {statusMessage}
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="submit"
+              className="rounded-full bg-[#d4af37] px-6 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? "Arbejder…" : "Skift adgangskode"}
+            </button>
+            <Link href="/forgot-password" className="text-sm font-semibold text-[#0b5a47] underline underline-offset-4">
+              Glemt adgangskode?
+            </Link>
+          </div>
+        </fieldset>
+      </form>
+    </FormSection>
+  );
+}
 
 type DashboardLinkProps = {
   href: string;
