@@ -29,6 +29,8 @@ type FavoriteListing = {
 
 export default function FavoritesPage() {
   const [favorites, setFavorites] = useState<FavoriteListing[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -44,12 +46,13 @@ export default function FavoritesPage() {
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) throw userError;
+        if (userError && userError.name !== "AuthSessionMissingError") throw userError;
 
         if (!user) {
-          setMessage("Du skal være logget ind for at se dine favoritter.");
+          setNeedsLogin(true);
           return;
         }
+        setUserId(user.id);
 
         const { data, error } = await supabase
           .from("favorites")
@@ -168,6 +171,17 @@ export default function FavoritesPage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+        {userId && (
+          <section id="prismails" className="mb-6 scroll-mt-36 rounded-[24px] border border-[#eadfcb] bg-white p-5 sm:p-6">
+            <h2 className="font-semibold text-[#063f32]">
+              Prisændringer på dine favoritter
+            </h2>
+            <p className="mt-2 text-sm text-stone-600">
+              Du får en e-mail, når prisen på en af dine favoritter ændrer sig.
+              Du kan stoppe beskederne om en vare ved at fjerne den fra dine favoritter.
+            </p>
+          </section>
+        )}
         {message && (
           <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
             {message}
@@ -181,6 +195,12 @@ export default function FavoritesPage() {
               <p className="mt-4 text-stone-500">Henter dine favoritter...</p>
             </div>
           </div>
+        ) : needsLogin ? (
+          <p className="text-stone-600">
+            <Link href="/login?redirect=%2Ffavorites%23prismails" className="font-semibold text-[#063f32] underline underline-offset-4">
+              Log ind
+            </Link>{" "}for at se dine favoritter og ændre dine e-mailindstillinger.
+          </p>
         ) : favorites.length === 0 ? (
           <div className="rounded-[30px] border border-[#eadfcb] bg-white px-6 py-14 text-center shadow-[0_16px_40px_rgba(0,0,0,0.05)] md:px-12 md:py-20">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#f4ead0]">

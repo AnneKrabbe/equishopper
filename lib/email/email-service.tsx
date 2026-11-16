@@ -11,6 +11,7 @@ import { OrderConfirmationEmail } from "@/emails/templates/order-confirmation";
 import { PaymentReleasedBuyerEmail } from "@/emails/templates/payment-released-buyer";
 import { PaymentReleasedSellerEmail } from "@/emails/templates/payment-released-seller";
 import { ReviewReminderEmail } from "@/emails/templates/review-reminder";
+import { MarketplaceAlertEmail, type MarketplaceAlertProps } from "@/emails/templates/marketplace-alert";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const emailFrom =
@@ -36,11 +37,13 @@ async function sendEmail({
   subject,
   react,
   replyTo,
+  idempotencyKey,
 }: {
   to: EmailRecipient;
   subject: string;
   react: React.ReactElement;
   replyTo?: string;
+  idempotencyKey?: string;
 }): Promise<SendEmailResult> {
   const recipient = to.name ? `${to.name} <${to.email}>` : to.email;
 
@@ -50,7 +53,7 @@ async function sendEmail({
     subject,
     react,
     replyTo,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   if (error) {
     throw new Error(
@@ -63,6 +66,19 @@ async function sendEmail({
   }
 
   return { id: data.id };
+}
+
+export function sendMarketplaceAlertEmail(email: string, props: MarketplaceAlertProps, jobId: string) {
+  const prefix = props.kind === "favorite_price"
+    ? "Ny pris på en favorit"
+    : "Din søgeagent har fundet en ny annonce";
+
+  return sendEmail({
+    to: { email },
+    subject: `${prefix}: ${props.title.replace(/[\r\n]+/g, " ").slice(0, 140)}`,
+    react: <MarketplaceAlertEmail {...props} />,
+    idempotencyKey: `marketplace-alert/${jobId}`,
+  });
 }
 
 export async function sendNewOfferEmail({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { sendEmailFromOutbox } from "@/lib/email/email-service";
+import { processMarketplaceEmailJobs } from "@/lib/email/marketplace-email-jobs";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
@@ -109,15 +110,6 @@ export async function GET(request: NextRequest) {
 
   const rows = (data ?? []) as EmailOutboxRow[];
 
-  if (rows.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      claimed: 0,
-      sent: 0,
-      failed: 0,
-    });
-  }
-
   const results = [];
 
   // Bevidst sekventielt: mere skånsomt mod Resend og lettere at fejlsøge.
@@ -127,12 +119,14 @@ export async function GET(request: NextRequest) {
 
   const sent = results.filter((result) => result.status === "sent").length;
   const failed = results.filter((result) => result.status === "failed").length;
+  const marketplaceAlerts = await processMarketplaceEmailJobs();
 
   return NextResponse.json({
     ok: true,
     claimed: rows.length,
     sent,
     failed,
-    results,
+    marketplaceAlerts,
+    ...(results.length ? { results } : {}),
   });
 }

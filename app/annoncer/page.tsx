@@ -9,6 +9,8 @@ import FilterSidebar from "@/components/filters/FilterSidebar";
 import MobileFilterBar from "@/components/filters/MobileFilterBar";
 import Header from "@/components/home/Header";
 import Hero from "@/components/home/Hero";
+import SaveListingSearch from "@/components/listings/SaveListingSearch";
+import { hasListingSearchFilters, listingSearchUrl, type ListingSearchCriteria } from "@/lib/listing-search-agents";
 
 import { RotateCcw, Search } from "lucide-react";
 
@@ -131,6 +133,19 @@ export default async function ListingsPage({
       ? parsedMaxPrice
       : null;
 
+  const searchCriteria: ListingSearchCriteria = {
+    search_query: searchQuery,
+    category: categoryName === "Alle kategorier" ? "" : categoryName,
+    category_group: !subcategory && groupSubcategories.length ? group : "",
+    subcategory,
+    group_subcategories: subcategory ? [] : groupSubcategories,
+    size,
+    brand,
+    condition,
+    min_price: minPrice,
+    max_price: maxPrice,
+  };
+
   let query = supabase
     .from("listings")
     .select(`
@@ -147,7 +162,8 @@ export default async function ListingsPage({
         sort_order
       )
     `)
-    .eq("status", "active");
+    .eq("status", "active")
+    .is("deleted_at", null);
 
   if (searchQuery) {
     const searchValue = escapeSearchValue(searchQuery);
@@ -496,7 +512,12 @@ export default async function ListingsPage({
                 søgning, kategori, størrelse, mærke,
                 stand, priser og sortering.
               */}
-              <div className="mb-5 flex justify-end">
+              <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                  {hasListingSearchFilters(searchCriteria) && (
+                    <SaveListingSearch key={listingSearchUrl(searchCriteria)} criteria={searchCriteria} />
+                  )}
+                </div>
                 <Link
                   href="/annoncer"
                   scroll={false}

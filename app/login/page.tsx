@@ -60,7 +60,13 @@ export default function LoginPage() {
         throw error;
       }
 
-      router.replace("/");
+      const requestedPath = new URLSearchParams(window.location.search).get("redirect");
+      const supportedDestinations = ["/annoncer", "/favorites", "/soegeagenter"];
+      router.replace(
+        requestedPath && supportedDestinations.includes(requestedPath.split(/[?#]/, 1)[0])
+          ? requestedPath
+          : "/",
+      );
       router.refresh();
     } catch (error) {
       console.error("Kunne ikke logge ind:", error);

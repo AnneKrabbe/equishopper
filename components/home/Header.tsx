@@ -2,6 +2,7 @@
 
 
 
+import { Search as SearchAgentIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
@@ -793,6 +794,21 @@ export default function Header() {
                       icon={
 
                         <HeartIcon className="h-[19px] w-[19px]" />
+
+                      }
+
+                      onClick={() => setProfileMenuOpen(false)}
+
+                    />
+                    <ProfileMenuLink
+
+                      href="/soegeagenter"
+
+                      label="Mine søgeagenter"
+
+                      icon={
+
+                        <SearchAgentIcon className="h-[19px] w-[19px]" />
 
                       }
 
