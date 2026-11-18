@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createShipment } from "@/lib/shipping/shipping-service";
-import type { ShipmentRequest } from "@/lib/shipping/types";
+import type { ShipmentRequest, ShippingProvider } from "@/lib/shipping/types";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
@@ -193,15 +193,15 @@ export async function POST(
      * vælges i DaoProvider. Derfor validerer vi package_group,
      * ikke den interne product_code.
      */
-    if (
-      order.shipping_carrier?.trim().toLowerCase() !== "dao" ||
-      order.shipping_package_group !== "dao_shop"
-    ) {
+    const carrier = order.shipping_carrier?.trim().toLowerCase();
+    const groupByCarrier: Record<ShippingProvider, string> = {
+      dao: "dao_shop",
+      gls: "gls_shop",
+      postnord: "postnord_shop",
+    };
+    if (!isShippingProvider(carrier) || order.shipping_package_group !== groupByCarrier[carrier]) {
       return NextResponse.json(
-        {
-          error:
-            "Ordren har ikke et gyldigt DAO daoSHOP-fragtprodukt.",
-        },
+        { error: "Ordren har ikke et gyldigt fragtprodukt." },
         { status: 409 },
       );
     }
@@ -214,7 +214,7 @@ export async function POST(
 
     if (confirmationBody?.packageLimitsConfirmed !== true) {
       return NextResponse.json(
-        { error: "Bekræft pakkens vægt og mål, før du opretter DAO-fragtkoden." },
+        { error: "Bekræft pakkens vægt og mål, før du opretter fragten." },
         { status: 400 },
       );
     }
@@ -234,7 +234,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Ordren mangler den DAO-pakkeshop, som køberen valgte ved checkout.",
+            "Ordren mangler den pakkeshop, som køberen valgte ved checkout.",
         },
         { status: 409 },
       );
@@ -317,7 +317,7 @@ export async function POST(
       "Sælger";
 
     const shipmentRequest: ShipmentRequest = {
-      provider: "dao",
+      provider: carrier,
       orderId: order.id,
       reference: `Equishopper ${order.id}`,
       weight: Math.round(weightGrams),
@@ -344,10 +344,36 @@ export async function POST(
       },
     };
 
+    // Kun de NYE transportører reserveres atomisk før en betalingspligtig
+    // booking. DAO's eksisterende bookingsflow ændres ikke.
+    const bookingStartedAt = new Date().toISOString();
+    if (carrier !== "dao") {
+      const { data: claim, error: claimError } = await supabaseAdmin
+        .from("orders")
+        .update({ shipping_booking_started_at: bookingStartedAt })
+        .eq("id", order.id)
+        .eq("seller_id", user.id)
+        .eq("payment_status", "paid")
+        .is("shipping_booking_started_at", null)
+        .is("shipping_shipment_id", null)
+        .select("id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claim) {
+        return NextResponse.json(
+          { error: "Fragtbookingen er allerede i gang eller skal kontrolleres hos Shipmondo." },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Ved usikre API-fejl beholdes reservationen. Det forhindrer dobbelt
+    // køb af fragtlabels. En administrator må kontrollere Shipmondo før retry.
     const shipment = await createShipment(shipmentRequest);
 
     const orderUpdate = {
-      shipping_carrier: "dao",
+      shipping_carrier: carrier,
+      ...(carrier !== "dao" ? { shipping_booking_started_at: null } : {}),
       tracking_number:
         shipment.trackingNumber?.trim() || null,
       shipping_shipment_id:
@@ -401,7 +427,7 @@ export async function POST(
     });
   } catch (error) {
     console.error(
-      "DAO-forsendelsen kunne ikke oprettes:",
+      "Forsendelsen kunne ikke oprettes:",
       error,
     );
 
@@ -474,4 +500,7 @@ function validateReceiver(order: OrderRow) {
   if (!order.shipping_city?.trim()) {
     throw new Error("Ordren mangler modtagerens by.");
   }
+}
+function isShippingProvider(value: string | undefined): value is ShippingProvider {
+  return value === "dao" || value === "gls" || value === "postnord";
 }

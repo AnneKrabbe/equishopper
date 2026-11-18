@@ -534,10 +534,7 @@ const filteredBrands = brandOptions
       "Fragt",
       shippingAvailable
         ? selectedShippingProduct
-          ? `${selectedShippingProduct.name} · ${formatShippingPrice(
-              selectedShippingProduct.price_amount,
-              selectedShippingProduct.currency,
-            )}`
+          ? `Op til ${formatWeight(selectedShippingProduct.max_weight_grams)} · Køber vælger fragtfirma`
           : "Vælg pakkestørrelse"
         : "Nej",
     ],
@@ -1318,7 +1315,7 @@ const { data: listing, error } = await supabase
               <div className="grid gap-4 md:grid-cols-3">
                 <ChoiceCard
                   title="Fragt muligt"
-                  description="Køberen kan få varen sendt med DAO"
+                  description="Køberen vælger DAO, GLS eller PostNord ved betaling"
                   checked={shippingAvailable}
                   onChange={setShippingAvailable}
                 />
@@ -1348,15 +1345,17 @@ const { data: listing, error } = await supabase
                         </h3>
 
                         <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
-                          Vælg efter pakkens samlede vægt, når varen er
-                          forsvarligt pakket ind. DAO tillader maks. 80 cm
-                          længde og omkreds + længde på maks. 240 cm.
-                          Er du i tvivl om vægten, så vælg den større klasse.
+                          Vælg vægtklasse ud fra hele pakken inklusive emballage.
+                          Køberen vælger DAO, GLS eller PostNord og pakkeshop
+                          ved betaling. Målgrænserne er forskellige hos de tre
+                          fragtfirmaer, så kontrollér også pakkens mål inden
+                          afsendelse. Er du i tvivl om vægten, så vælg en
+                          større klasse.
                         </p>
                       </div>
 
                       <span className="inline-flex w-fit rounded-full bg-[#edf5f0] px-3 py-1.5 text-xs font-semibold text-[#0b5a47]">
-                        DAO
+                        DAO · GLS · PostNord
                       </span>
                     </div>
 
@@ -2031,14 +2030,11 @@ function ShippingProductSelector({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <p className="font-semibold text-[#063f32]">
-                    {product.name}
+                    Op til {formatWeight(product.max_weight_grams)}
                   </p>
 
-                  <p className="font-semibold text-[#8a6c13]">
-                    {formatShippingPrice(
-                      product.price_amount,
-                      product.currency,
-                    )}
+                  <p className="text-xs font-medium text-stone-500">
+                    Køber vælger fragtfirma og betaler fragten
                   </p>
                 </div>
 
@@ -2073,18 +2069,6 @@ function ShippingFact({
       </span>
     </div>
   );
-}
-
-function formatShippingPrice(
-  amount: number,
-  currency: string,
-) {
-  return new Intl.NumberFormat("da-DK", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.ceil(amount / 100));
 }
 
 function formatWeight(weightGrams: number) {

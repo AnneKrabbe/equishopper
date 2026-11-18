@@ -24,6 +24,7 @@ import {
 
 import Header from "@/components/home/Header";
 import ContactSellerButton from "@/components/listings/ContactSellerButton";
+import ShippingDocuments from "@/components/orders/ShippingDocuments";
 import { supabase } from "@/lib/supabase";
 
 type FulfillmentStatus =
@@ -56,6 +57,7 @@ type OrderRow = {
   shipping_note: string | null;
   shipping_carrier: string | null;
   tracking_number: string | null;
+  shipping_tracking_url: string | null;
   shipping_service_point_id: string | null;
   shipping_service_point_name: string | null;
   shipping_service_point_address: string | null;
@@ -213,6 +215,7 @@ export default function MyOrdersPage() {
             shipping_note,
             shipping_carrier,
             tracking_number,
+            shipping_tracking_url,
             shipping_service_point_id,
             shipping_service_point_name,
             shipping_service_point_address,
@@ -635,9 +638,9 @@ const response = await fetch("/api/reviews", {
             </h1>
 
             <p className="mt-3 max-w-2xl leading-7 text-stone-600">
-              Følg dine køb og se leveringsoplysninger. Ved DAO-fragt
-              frigives betalingen automatisk efter levering, hvis der ikke
-              oprettes en tvist.
+              Følg dine køb og se leveringsoplysninger. Ved fragt
+              frigives betalingen automatisk 48 timer efter udlevering,
+              hvis der ikke er oprettet en tvist.
             </p>
           </div>
 
@@ -739,6 +742,13 @@ const response = await fetch("/api/reviews", {
                     const canReview =
                       effectiveStatus === "completed" &&
                       !existingReview;
+                    const trackedCarrier = order.shipping_carrier?.trim().toLowerCase();
+                    const newCarrier: "gls" | "postnord" | null =
+                      trackedCarrier === "gls"
+                        ? "gls"
+                        : trackedCarrier === "postnord"
+                          ? "postnord"
+                          : null;
 
                     return (
                       <article
@@ -894,6 +904,34 @@ const response = await fetch("/api/reviews", {
                                     Spor pakken hos DAO
                                     <ExternalLink className="h-3.5 w-3.5" />
                                   </a>
+                                </div>
+                              </div>
+                            )}
+
+                          {/* DAO-forsendelsens eksisterende tracking er bevidst urørt. */}
+                          {order.shipping_method === "shipping" &&
+                            newCarrier &&
+                            order.tracking_number && (
+                              <div className="mt-5 rounded-2xl border border-[#d4af37]/40 bg-[#fffaf0] p-5">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white text-[#0b5a47] shadow-sm">
+                                    <Truck className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-[#063f32]">
+                                      Spor din pakke hos {newCarrier === "gls" ? "GLS" : "PostNord"}
+                                    </p>
+                                    <p className="mt-1 break-all text-sm text-stone-600">
+                                      Trackingnummer: {order.tracking_number}
+                                    </p>
+                                    <ShippingDocuments
+                                      orderId={order.id}
+                                      carrier={newCarrier}
+                                      trackingNumber={order.tracking_number}
+                                      trackingUrl={order.shipping_tracking_url}
+                                      isSeller={false}
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -1441,7 +1479,7 @@ function OrderDetails({ order }: { order: OrderView }) {
 
                       <div>
                         <p className="font-semibold text-[#063f32]">
-                          Valgt DAO-pakkeshop
+                          Valgt {order.shipping_carrier?.toLowerCase() === "gls" ? "GLS" : order.shipping_carrier?.toLowerCase() === "postnord" ? "PostNord" : "DAO"}-pakkeshop
                         </p>
 
                         {order.shipping_service_point_name && (
@@ -1610,7 +1648,7 @@ function StatusExplanation({
     },
     shipped: {
       text:
-        "Varen er sendt. Når DAO registrerer pakken som leveret, frigives betalingen automatisk til sælger efter 48 timer, hvis der ikke er oprettet en tvist.",
+        "Varen er sendt. Når fragtfirmaet registrerer, at pakken er udleveret til dig, frigives betalingen automatisk til sælger efter 48 timer, hvis der ikke er oprettet en tvist.",
       icon: Truck,
     },
     completed: {

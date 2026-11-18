@@ -1,6 +1,6 @@
 // lib/shipping/types.ts
 
-export type ShippingProvider = "dao";
+export type ShippingProvider = "dao" | "gls" | "postnord";
 
 export interface ParcelShop {
   id: string;

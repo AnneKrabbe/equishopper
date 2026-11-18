@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import Header from "@/components/home/Header";
+import { calculateShippingOere, calculateBuyerProtectionOere } from "@/lib/checkout-pricing";
 import { supabase } from "@/lib/supabase";
 
 type CartRow = {
@@ -55,7 +56,16 @@ type CartRow = {
 
 type ShippingMethod = "shipping" | "pickup";
 
-type DaoShippingOption = {
+type Carrier = "dao" | "gls" | "postnord";
+
+type ShippingOption = {
+  carrier: Carrier;
+  package_group: string;
+  active: boolean;
+  outbound_enabled: boolean;
+  currency: string;
+  delivery_method: string;
+  product_code: string;
   id: string;
   name: string;
   max_weight_grams: number;
@@ -84,8 +94,14 @@ type DaoServicePointsResponse = {
   error?: string;
 };
 
-const BUYER_PROTECTION_PERCENTAGE = 0.03;
-const BUYER_PROTECTION_FIXED_FEE = 5;
+const CARRIERS: Carrier[] = ["dao", "gls", "postnord"];
+const CARRIER_LABEL: Record<Carrier, string> = {
+  dao: "DAO", gls: "GLS", postnord: "PostNord",
+};
+const CARRIER_GROUP: Record<Carrier, string> = {
+  dao: "dao_shop", gls: "gls_shop", postnord: "postnord_shop",
+};
+const ALLOWED_WEIGHTS = new Set([1000, 5000, 10000, 15000]);
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -109,7 +125,8 @@ export default function CartPage() {
   const router = useRouter();
 
   const [items, setItems] = useState<CartRow[]>([]);
-  const [daoOptions, setDaoOptions] = useState<DaoShippingOption[]>([]);
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+  const [selectedCarrier, setSelectedCarrier] = useState<Carrier>("dao");
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -195,6 +212,7 @@ export default function CartPage() {
     postalCode,
     city,
     shippingMethod,
+    selectedCarrier,
   ]);
 
   async function loadServicePoints(
@@ -213,8 +231,12 @@ export default function CartPage() {
         city: cityName,
       });
 
+      const endpoint = selectedCarrier === "dao"
+        ? "/api/shipping/dao/service-points"
+        : "/api/shipping/shop/service-points";
+      if (selectedCarrier !== "dao") params.set("carrier", selectedCarrier);
       const response = await fetch(
-        `/api/shipping/dao/service-points?${params.toString()}`,
+        `${endpoint}?${params.toString()}`,
         {
           method: "GET",
           signal,
@@ -225,7 +247,7 @@ export default function CartPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "DAO-pakkeshops kunne ikke hentes.",
+          data.error || `${CARRIER_LABEL[selectedCarrier]}-pakkeshops kunne ikke hentes.`,
         );
       }
 
@@ -233,6 +255,7 @@ export default function CartPage() {
         ? data.servicePoints
         : [];
 
+      if (signal?.aborted) return;
       setServicePoints(points);
 
       setSelectedServicePointId((current) =>
@@ -243,7 +266,7 @@ export default function CartPage() {
 
       if (points.length === 0) {
         setServicePointError(
-          "Der blev ikke fundet DAO-pakkeshops tæt på denne adresse.",
+          `Der blev ikke fundet ${CARRIER_LABEL[selectedCarrier]}-pakkeshops tæt på denne adresse.`,
         );
       }
     } catch (error) {
@@ -251,13 +274,13 @@ export default function CartPage() {
         return;
       }
 
-      console.error("DAO-pakkeshops kunne ikke hentes:", error);
+      console.error("Pakkeshops kunne ikke hentes:", error);
       setServicePoints([]);
       setSelectedServicePointId("");
       setServicePointError(
         error instanceof Error
           ? error.message
-          : "DAO-pakkeshops kunne ikke hentes.",
+          : `${CARRIER_LABEL[selectedCarrier]}-pakkeshops kunne ikke hentes.`,
       );
     } finally {
       if (!signal?.aborted) {
@@ -334,17 +357,16 @@ export default function CartPage() {
 
       setItems(validRows);
 
-      // Kun aktive DAO-klasser. Ingen hardcodede priser.
-      const { data: shippingOptions, error: shippingOptionsError } = await supabase
+      // Fragtpriser hentes fra samme tabel som checkout-serveren.
+      const { data: products, error: shippingOptionsError } = await supabase
         .from("shipping_products")
-        .select("id, name, max_weight_grams, price_amount")
-        .eq("carrier", "dao")
-        .eq("package_group", "dao_shop")
+        .select("id, carrier, product_code, package_group, name, max_weight_grams, price_amount, currency, delivery_method, active, outbound_enabled")
+        .in("carrier", CARRIERS)
         .eq("active", true)
         .eq("outbound_enabled", true)
         .order("max_weight_grams", { ascending: true });
       if (shippingOptionsError) throw shippingOptionsError;
-      setDaoOptions((shippingOptions ?? []) as DaoShippingOption[]);
+      setShippingOptions((products ?? []) as ShippingOption[]);
       setSelectedPackageId("");
 
       const shippingUnavailable = validRows.some(
@@ -415,46 +437,51 @@ export default function CartPage() {
     new Set(items.map((item) => item.listing?.seller_id)).size === 1;
   const combinedShipping = singleSeller && items.length > 1;
 
-  // 70 % er kun et vejledende skøn, ikke en målt vægt.
+  // Samme vægtklasse som varen er oprettet med; ingen manuelt angivet pris.
+  const carrierOptions = shippingOptions.filter((option) =>
+    option.carrier === selectedCarrier &&
+    option.package_group === CARRIER_GROUP[selectedCarrier] &&
+    option.currency.toLowerCase() === "dkk" &&
+    ALLOWED_WEIGHTS.has(option.max_weight_grams),
+  );
   const estimatedGrams = items.reduce(
     (sum, item) => sum + (item.listing?.shipping_product?.max_weight_grams ?? 0),
     0,
   ) * 0.7;
   const suggestedPackage = combinedShipping
-    ? daoOptions.find((option) => option.max_weight_grams >= estimatedGrams) ??
-      daoOptions[daoOptions.length - 1] ?? null
+    ? carrierOptions.find((option) => option.max_weight_grams >= estimatedGrams) ?? null
     : null;
-  const selectedPackage = daoOptions.find((option) => option.id === selectedPackageId) ??
+  const selectedPackage = carrierOptions.find((option) => option.id === selectedPackageId) ??
     suggestedPackage;
 
-  const shippingTotal = useMemo(() => {
-    if (items.length === 0 || shippingMethod !== "shipping") return 0;
-    if (combinedShipping) {
-      return selectedPackage ? Math.ceil(selectedPackage.price_amount / 100) : 0;
-    }
-    const shippingOere = items.reduce((sum, item) => {
-      const product = item.listing?.shipping_product;
-      if (!item.listing?.shipping_available || !product || !product.active ||
-          !product.outbound_enabled || product.carrier.toLowerCase() !== "dao") return sum;
-      return sum + Math.ceil(product.price_amount / 100) * 100;
-    }, 0);
-    return shippingOere / 100;
-  }, [items, shippingMethod, combinedShipping, selectedPackage]);
+  const singleItemProduct = !combinedShipping && items.length === 1
+    ? items[0].listing?.shipping_product
+    : null;
+  const singleOption = singleItemProduct
+    ? (selectedCarrier === "dao" && singleItemProduct.carrier.toLowerCase() === "dao"
+        ? singleItemProduct
+        : carrierOptions.find((option) =>
+            option.max_weight_grams >= singleItemProduct.max_weight_grams,
+          ) ?? null)
+    : null;
+  const shippingProduct = combinedShipping ? selectedPackage : singleOption;
 
-  const buyerProtectionFee =
-    items.length > 0
-      ? roundCurrency(
-          subtotal * BUYER_PROTECTION_PERCENTAGE +
-            BUYER_PROTECTION_FIXED_FEE,
-        )
-      : 0;
-
-  const total = roundCurrency(
-    subtotal + shippingTotal + buyerProtectionFee,
-  );
+  const shippingTotal = shippingMethod === "shipping" && shippingProduct
+    ? calculateShippingOere(shippingProduct.price_amount) / 100
+    : 0;
+  const buyerProtectionFee = items.length > 0
+    ? calculateBuyerProtectionOere(Math.round(subtotal * 100)) / 100
+    : 0;
+  const total = roundCurrency(subtotal + shippingTotal + buyerProtectionFee);
 
   const hasPickupUnavailableItem = items.some(
     (item) => item.listing?.pickup_available === false,
+  );
+
+  const hasOriginalShippingUnavailableItem = items.some((item) =>
+    !item.listing?.shipping_available || !item.listing.shipping_product_id ||
+    !item.listing.shipping_product?.active ||
+    !item.listing.shipping_product?.outbound_enabled,
   );
 
   const hasShippingUnavailableItem = items.some((item) => {
@@ -467,7 +494,8 @@ export default function CartPage() {
       !product ||
       !product.active ||
       !product.outbound_enabled ||
-      product.carrier.toLowerCase() !== "dao"
+      product.max_weight_grams > 15000 ||
+      !shippingProduct
     );
   });
 
@@ -525,9 +553,8 @@ export default function CartPage() {
       setErrorMessage("Kurven kan endnu kun betales med varer fra én sælger ad gangen.");
       return;
     }
-    if (combinedShipping && shippingMethod === "shipping" &&
-        (!selectedPackage || !daoOptions.some((option) => option.id === selectedPackage.id))) {
-      setErrorMessage("DAO-fragtklasserne kunne ikke hentes. Genindlæs siden og prøv igen.");
+    if (combinedShipping && shippingMethod === "shipping" && !selectedPackage) {
+      setErrorMessage("Der er ingen gyldig samlet pakkeklasse for den valgte transportør.");
       return;
     }
 
@@ -569,7 +596,7 @@ export default function CartPage() {
       !selectedServicePoint
     ) {
       setErrorMessage(
-        "Vælg en DAO-pakkeshop, før du fortsætter.",
+        `Vælg en ${CARRIER_LABEL[selectedCarrier]}-pakkeshop, før du fortsætter.`,
       );
       return;
     }
@@ -607,6 +634,7 @@ export default function CartPage() {
         },
         body: JSON.stringify({
           shippingMethod,
+          shippingCarrier: selectedCarrier,
           combinedShippingProductId: combinedShipping && shippingMethod === "shipping"
             ? selectedPackage?.id : undefined,
           fullName: fullName.trim(),
@@ -772,8 +800,7 @@ export default function CartPage() {
                           ) : listing.shipping_product &&
                             listing.shipping_product.active &&
                             listing.shipping_product.outbound_enabled &&
-                            listing.shipping_product.carrier.toLowerCase() ===
-                              "dao" ? (
+                            listing.shipping_product.max_weight_grams <= 15000 ? (
                             <div className="mt-2 text-sm text-stone-500">
                               <p className="font-medium text-[#063f32]">
                                 {listing.shipping_product.name}
@@ -784,9 +811,7 @@ export default function CartPage() {
                                 )}{" "}
                                 ·{" "}
                                 {formatMoney(
-                                  Math.ceil(
-                                    listing.shipping_product.price_amount / 100,
-                                  ),
+                                  calculateShippingOere(listing.shipping_product.price_amount) / 100,
                                 )}
                               </p>
                             </div>
@@ -855,7 +880,7 @@ export default function CartPage() {
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <label
                     className={`rounded-2xl border p-4 ${
-                      hasShippingUnavailableItem
+                      hasOriginalShippingUnavailableItem
                         ? "cursor-not-allowed bg-stone-50 opacity-60"
                         : "cursor-pointer"
                     } ${
@@ -870,7 +895,7 @@ export default function CartPage() {
                       value="shipping"
                       checked={shippingMethod === "shipping"}
                       disabled={
-                        hasShippingUnavailableItem || submitting
+                        hasOriginalShippingUnavailableItem || submitting
                       }
                       onChange={() =>
                         setShippingMethod("shipping")
@@ -883,11 +908,9 @@ export default function CartPage() {
                     </span>
 
                     <span className="mt-1 block pl-6 text-sm text-stone-500">
-                      {hasShippingUnavailableItem
+                      {hasOriginalShippingUnavailableItem
                         ? "Ikke muligt for en eller flere varer"
-                        : `${formatMoney(
-                            shippingTotal,
-                          )} · DAO Shop2Shop`}
+                        : `${formatMoney(shippingTotal)} · ${CARRIER_LABEL[selectedCarrier]}`}
                     </span>
                   </label>
 
@@ -925,6 +948,35 @@ export default function CartPage() {
                     </span>
                   </label>
                 </div>
+
+                {shippingMethod === "shipping" && !hasOriginalShippingUnavailableItem && (
+                  <div className="mt-5">
+                    <p className="mb-3 font-semibold text-[#063f32]">Vælg fragtfirma</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {CARRIERS.map((carrier) => {
+                        const selected = selectedCarrier === carrier;
+                        return (
+                          <label key={carrier} className={`flex cursor-pointer flex-col gap-2 rounded-2xl border p-3 transition ${selected ? "border-[#d4af37] bg-[#fbf6e8] ring-1 ring-[#d4af37]" : "border-stone-200 bg-white hover:border-[#d4af37]"}`}>
+                            <span className="flex items-center gap-2">
+                              <input type="radio" name="shippingCarrier" checked={selected}
+                                disabled={submitting} onChange={() => {
+                                  setSelectedCarrier(carrier);
+                                  setSelectedServicePointId("");
+                                  setServicePoints([]);
+                                  setSelectedPackageId("");
+                                  setServicePointError("");
+                                }} />
+                              <CarrierWordmark carrier={carrier} />
+                            </span>
+                            <span className="text-xs text-stone-600">
+                              {selected ? (shippingProduct ? `${formatMoney(shippingTotal)} · til pakkeshop` : "Ingen passende fragtklasse") : "Levering til pakkeshop"}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {shippingMethod === "shipping" && (
                   <div className="mt-6 space-y-6">
@@ -1029,10 +1081,10 @@ export default function CartPage() {
 
                         <div>
                           <h3 className="font-semibold text-[#063f32]">
-                            Vælg DAO-pakkeshop
+                            <span className="inline-flex items-center gap-2"><CarrierWordmark carrier={selectedCarrier} /> Vælg pakkeshop</span>
                           </h3>
                           <p className="mt-1 text-sm leading-6 text-stone-500">
-                            Vi viser de 5 nærmeste DAO-pakkeshops ud fra
+                            Vi viser de 5 nærmeste {CARRIER_LABEL[selectedCarrier]}-pakkeshops ud fra
                             din adresse, dit postnummer og din by.
                           </p>
                         </div>
@@ -1043,12 +1095,12 @@ export default function CartPage() {
                       !city.trim() ? (
                         <p className="mt-4 rounded-xl bg-white px-4 py-3 text-sm text-stone-500">
                           Udfyld adresse, 4-cifret postnummer og by for
-                          at se de 5 nærmeste DAO-pakkeshops.
+                          at se de 5 nærmeste {CARRIER_LABEL[selectedCarrier]}-pakkeshops.
                         </p>
                       ) : loadingServicePoints ? (
                         <div className="mt-4 flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-stone-500">
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Henter DAO-pakkeshops...
+                          Henter {CARRIER_LABEL[selectedCarrier]}-pakkeshops...
                         </div>
                       ) : servicePointError ? (
                         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1076,7 +1128,7 @@ export default function CartPage() {
                                 <div className="flex items-start gap-3">
                                   <input
                                     type="radio"
-                                    name="daoServicePoint"
+                                    name="shippingServicePoint"
                                     value={point.id}
                                     checked={selected}
                                     disabled={submitting}
@@ -1150,26 +1202,26 @@ export default function CartPage() {
                   />
                   {combinedShipping && shippingMethod === "shipping" && (
                     <div className="rounded-2xl border border-[#eadfcb] bg-[#fcfaf6] p-4">
-                      <p className="font-semibold text-[#063f32]">Samlet DAO-fragt er valgt automatisk</p>
+                      <p className="font-semibold text-[#063f32]">Samlet fragt med {CARRIER_LABEL[selectedCarrier]}</p>
                       <p className="mt-1 text-xs leading-5 text-stone-600">
                         Vi foreslår en pakkeklasse ud fra 70 % af varernes registrerede
                         maksimumvægte. Det er kun et skøn; du kan vælge en anden klasse.
                       </p>
-                      {daoOptions.length > 0 ? (
+                      {carrierOptions.length > 0 ? (
                         <>
-                          <label htmlFor="combined-dao-package" className="mt-3 block text-xs font-semibold text-[#063f32]">
+                          <label htmlFor="combined-shipping-package" className="mt-3 block text-xs font-semibold text-[#063f32]">
                             Pakkeklasse – ændr kun, hvis du ønsker det
                           </label>
                           <select
-                            id="combined-dao-package"
+                            id="combined-shipping-package"
                             value={selectedPackage?.id ?? ""}
                             onChange={(event) => setSelectedPackageId(event.target.value)}
                             disabled={submitting}
                             className="mt-2 w-full rounded-xl border border-[#d9ccb4] bg-white p-3 text-sm text-[#063f32]"
                           >
-                            {daoOptions.map((option) => (
+                            {carrierOptions.map((option) => (
                               <option key={option.id} value={option.id}>
-                                Op til {option.max_weight_grams / 1000} kg · {Math.ceil(option.price_amount / 100)} kr.
+                                Op til {option.max_weight_grams / 1000} kg · {calculateShippingOere(option.price_amount) / 100} kr.
                                 {suggestedPackage?.id === option.id ? " · Foreslået" : ""}
                               </option>
                             ))}
@@ -1182,7 +1234,7 @@ export default function CartPage() {
                               </p>
                             )}
                           <p className="mt-2 text-xs leading-5 text-stone-600">
-                            Sælgeren skal bekræfte vægt og pakkemål før DAO-koden oprettes.
+                            Sælgeren skal bekræfte vægt og mål, før fragten oprettes.
                           </p>
                         </>
                       ) : (
@@ -1199,7 +1251,7 @@ export default function CartPage() {
                   />
 
                   <p className="text-xs leading-5 text-stone-500">
-                    Køberbeskyttelse: 3 % af vareprisen + 5 kr.
+                    Køberbeskyttelse: 3 % af vareprisen + 10 kr.
                   </p>
 
                   <div className="my-4 border-t border-[#eadfcb]" />
@@ -1252,7 +1304,7 @@ export default function CartPage() {
                   disabled={
                     submitting ||
                     !acceptedTerms ||
-                    (combinedShipping && shippingMethod === "shipping" && !daoOptions.length) ||
+                    (combinedShipping && shippingMethod === "shipping" && !carrierOptions.length) ||
                     (shippingMethod === "shipping" &&
                       (hasShippingUnavailableItem ||
                         !selectedServicePoint)) ||
@@ -1289,8 +1341,8 @@ export default function CartPage() {
                   <MapPin className="mt-0.5 h-5 w-5 flex-none text-[#b79a3d]" />
 
                   <p>
-                    Ved én vare bruges annoncens DAO-klasse. Ved flere varer
-                    fra samme sælger beregnes samlet fragt automatisk.
+                    Ved én vare bruges annoncens vægtklasse. Du vælger DAO, GLS
+                    eller PostNord. Ved flere varer fra samme sælger foreslås én samlet pakke.
                     Du kan ændre pakkeklassen i ordreoversigten. Sælgeren
                     skal kontrollere vægt og mål inden afsendelse.
                   </p>
@@ -1302,6 +1354,16 @@ export default function CartPage() {
       </div>
     </main>
   );
+}
+
+function CarrierWordmark({ carrier }: { carrier: Carrier }) {
+  if (carrier === "dao") {
+    return <span aria-label="DAO" className="inline-flex h-9 min-w-20 items-center justify-center rounded-lg bg-white px-2 text-xl font-black lowercase tracking-tight text-[#e30613]">dao</span>;
+  }
+  if (carrier === "gls") {
+    return <span aria-label="GLS" className="inline-flex h-9 min-w-20 items-center justify-center rounded-lg bg-white px-2 text-xl font-black italic tracking-tight text-[#142c91]">GLS<span className="ml-0.5 self-start pt-1 text-[#f5c400]">●</span></span>;
+  }
+  return <span aria-label="PostNord" className="inline-flex h-9 min-w-24 items-center justify-center rounded-lg bg-white px-2 text-base font-extrabold tracking-tight text-[#0099cb]">postnord</span>;
 }
 
 type FieldProps = {

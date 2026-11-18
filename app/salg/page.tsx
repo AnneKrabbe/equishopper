@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import Header from "@/components/home/Header";
+import ShippingDocuments from "@/components/orders/ShippingDocuments";
 import { supabase } from "@/lib/supabase";
 
 type FulfillmentStatus =
@@ -411,24 +412,32 @@ export default function SalesPage() {
 
       if (!response.ok) {
         throw new Error(
-          result?.error || "DAO-fragtkoden kunne ikke oprettes.",
+          result?.error || "Forsendelsen kunne ikke oprettes.",
         );
       }
 
-      setSuccessMessage(
-        result?.alreadyCreated
-          ? "DAO-fragtkoden var allerede oprettet."
-          : "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt.",
-      );
+      if (isShopCarrier(order.shipping_carrier)) {
+        setSuccessMessage(
+          result?.alreadyCreated
+            ? "Forsendelsen var allerede oprettet. Hent fragtpapirerne nedenfor."
+            : "Forsendelsen er oprettet. Hent fragtpapirerne nedenfor, og følg fragtfirmaets indleveringsvejledning. Markér først varen som sendt, når den er indleveret.",
+        );
+      } else {
+        setSuccessMessage(
+          result?.alreadyCreated
+            ? "DAO-fragtkoden var allerede oprettet."
+            : "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt.",
+        );
+      }
 
       await loadOrders({ silent: true });
     } catch (error) {
-      console.error("DAO-fragtkoden kunne ikke oprettes:", error);
+      console.error("Forsendelsen kunne ikke oprettes:", error);
 
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "DAO-fragtkoden kunne ikke oprettes.",
+          : "Forsendelsen kunne ikke oprettes.",
       );
     } finally {
       setGeneratingLabelOrderId(null);
@@ -446,7 +455,9 @@ export default function SalesPage() {
       !order.tracking_number?.trim()
     ) {
       setErrorMessage(
-        "Generér DAO-fragtkoden, før du markerer varen som sendt.",
+        isShopCarrier(order.shipping_carrier)
+          ? "Opret forsendelsen, før du markerer varen som sendt."
+          : "Generér DAO-fragtkoden, før du markerer varen som sendt.",
       );
       return;
     }
@@ -563,7 +574,7 @@ export default function SalesPage() {
               id="shipment-reminder-title"
               className="font-serif text-2xl text-[#063f32]"
             >
-              Kontrollér pakken før DAO-fragt
+              Kontrollér pakken før {getCarrierName(shipmentReminderOrder.shipping_carrier)}-fragt
             </h2>
             <p
               id="shipment-reminder-description"
@@ -571,19 +582,28 @@ export default function SalesPage() {
             >
               Ordren indeholder {shipmentReminderOrder.items.length} {shipmentReminderOrder.items.length === 1 ? "vare" : "varer"}.
               {" "}Pak varerne samlet i én pakke, og kontrollér den færdige
-              pakkes vægt og mål, inden du bestiller DAO-fragtkoden.
+              pakkes vægt og mål, inden du opretter forsendelsen.
             </p>
             <div className="mt-4 rounded-2xl bg-[#f8f6f1] p-4 text-sm leading-7 text-stone-700">
               <p className="font-semibold text-[#063f32]">
                 Valgt vægtklasse: maks. {Number(shipmentReminderOrder.shipping_max_weight_grams ?? 0) / 1000} kg
               </p>
-              <p>Maksimal længde: 80 cm</p>
-              <p>Længde + omkreds: maks. 240 cm</p>
-              <p className="text-xs leading-5 text-stone-500">
-                Omkreds beregnes som 2 × bredde + 2 × højde.
-                Pakken kan omtrent svare til en mellemstor flyttekasse,
-                men dens faktiske mål skal stadig kontrolleres.
-              </p>
+              {isShopCarrier(shipmentReminderOrder.shipping_carrier) ? (
+                <p className="text-xs leading-5 text-stone-600">
+                  Kontrollér også fragtfirmaets gældende målgrænser for
+                  den valgte pakkeservice, før du opretter forsendelsen.
+                </p>
+              ) : (
+                <>
+                  <p>Maksimal længde: 80 cm</p>
+                  <p>Længde + omkreds: maks. 240 cm</p>
+                  <p className="text-xs leading-5 text-stone-500">
+                    Omkreds beregnes som 2 × bredde + 2 × højde.
+                    Pakken kan omtrent svare til en mellemstor flyttekasse,
+                    men dens faktiske mål skal stadig kontrolleres.
+                  </p>
+                </>
+              )}
             </div>
             <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#eadfcb] p-3 text-sm leading-6 text-stone-700">
               <input
@@ -594,13 +614,13 @@ export default function SalesPage() {
               />
               <span>
                 Jeg bekræfter, at den færdigpakkede forsendelse overholder
-                den valgte vægtklasse og DAO&apos;s størrelsesgrænser.
+                den valgte vægtklasse og det valgte fragtfirmas størrelsesgrænser.
               </span>
             </label>
             <p className="mt-4 text-xs leading-5 text-stone-500">
               Vi anbefaler også, at du tager billeder af varen og indpakningen,
               inden pakken sendes. Hvis pakken ikke kan overholde grænserne,
-              må du ikke oprette fragtkoden. Kontakt Equishopper for hjælp.
+              må du ikke oprette forsendelsen. Kontakt Equishopper for hjælp.
             </p>
             <div className="mt-6 flex flex-col gap-3">
               <button
@@ -614,7 +634,9 @@ export default function SalesPage() {
                 disabled={!packageLimitsConfirmed}
                 className="rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Bekræft og opret DAO-fragtkode
+                {isShopCarrier(shipmentReminderOrder.shipping_carrier)
+                  ? "Bekræft og opret forsendelse"
+                  : "Bekræft og opret DAO-fragtkode"}
               </button>
               <button
                 type="button"
@@ -841,13 +863,15 @@ export default function SalesPage() {
                               {order.shipping_method === "shipping" ? (
                                 <>
                                   <h3 className="font-semibold text-[#063f32]">
-                                    DAO-fragt
+                                    {getCarrierName(order.shipping_carrier)}-fragt
                                   </h3>
 
                                   {!hasShipment ? (
                                     <>
                                       <p className="mt-2 text-sm leading-6 text-stone-600">
-                                        Generér først din DAO-fragtkode. Når koden er oprettet, skriver du den tydeligt på pakken med vandfast tusch. Aflever derefter pakken hos DAO og markér varen som sendt.
+                                        {isShopCarrier(order.shipping_carrier)
+                                          ? `Opret først din forsendelse med ${getCarrierName(order.shipping_carrier)}. Hent derefter QR-kode, hvis den tilbydes, eller en fragtlabel. Følg fragtfirmaets instruktioner, og markér først varen som sendt efter indlevering.`
+                                          : "Generér først din DAO-fragtkode. Når koden er oprettet, skriver du den tydeligt på pakken med vandfast tusch. Aflever derefter pakken hos DAO og markér varen som sendt."}
                                       </p>
 
                                       <button
@@ -869,8 +893,10 @@ export default function SalesPage() {
                                         )}
 
                                         {generatingShipmentCodeOrderId === order.id
-                                          ? "Genererer DAO-fragtkode..."
-                                          : "Generér DAO-fragtkode"}
+                                          ? "Opretter forsendelse..."
+                                          : isShopCarrier(order.shipping_carrier)
+                                            ? "Opret forsendelse"
+                                            : "Generér DAO-fragtkode"}
                                       </button>
                                     </>
                                   ) : (
@@ -880,19 +906,21 @@ export default function SalesPage() {
                                           <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-[#d4af37]" />
                                           <div className="min-w-0 flex-1">
                                             <p className="font-semibold text-white">
-                                              DAO-fragtkode oprettet
+                                              {isShopCarrier(order.shipping_carrier)
+                                                ? `${getCarrierName(order.shipping_carrier)}-forsendelse oprettet`
+                                                : "DAO-fragtkode oprettet"}
                                             </p>
 
                                             {order.tracking_number && (
                                               <p className="mt-2 break-all text-sm text-white">
-                                                DAO-fragtkode: <span className="font-semibold">{order.tracking_number}</span>
+                                                {isShopCarrier(order.shipping_carrier) ? "Trackingnummer" : "DAO-fragtkode"}: <span className="font-semibold">{order.tracking_number}</span>
                                               </p>
                                             )}
 
                                             <p className="mt-3 text-sm leading-6 text-white">
-                                              Skriv koden tydeligt på pakken med vandfast tusch,
-                                              og aflever pakken hos DAO. Markér først ordren
-                                              som sendt, når du har afleveret pakken.
+                                              {isShopCarrier(order.shipping_carrier)
+                                                ? "Hent QR-kode, hvis fragtfirmaet tilbyder den, ellers fragtlabel nedenfor. Trackingnummeret er ikke i sig selv en indleveringskode. Følg fragtfirmaets instruktioner, og markér først ordren som sendt efter indlevering."
+                                                : "Skriv koden tydeligt på pakken med vandfast tusch, og aflever pakken hos DAO. Markér først ordren som sendt, når du har afleveret pakken."}
                                             </p>
                                           </div>
                                         </div>
@@ -915,7 +943,7 @@ export default function SalesPage() {
                                       </div>
 
                                       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                                        {order.shipping_label_url && (
+                                        {!isShopCarrier(order.shipping_carrier) && order.shipping_label_url && (
                                           <a
                                             href={order.shipping_label_url}
                                             target="_blank"
@@ -988,6 +1016,23 @@ export default function SalesPage() {
                               )}
                             </div>
                           )}
+
+                          {order.shipping_method === "shipping" &&
+                            hasShipment &&
+                            getShippingCarrier(order.shipping_carrier) && (
+                              <div className="mt-5 rounded-2xl border border-[#eadfcb] bg-white p-4">
+                                <p className="font-semibold text-[#063f32]">
+                                  Sporing og fragtpapirer
+                                </p>
+                                <ShippingDocuments
+                                  orderId={order.id}
+                                  carrier={getShippingCarrier(order.shipping_carrier)}
+                                  trackingNumber={order.tracking_number}
+                                  trackingUrl={order.shipping_tracking_url}
+                                  isSeller
+                                />
+                              </div>
+                            )}
 
                           <div className="mt-6">
                             <button
@@ -1121,11 +1166,13 @@ function OrderDetails({ order }: { order: OrderView }) {
 
               {order.tracking_number && (
                 <p className="mt-1 break-all text-sm text-stone-600">
-                  DAO-fragtkode: {order.tracking_number}
+                  {isShopCarrier(order.shipping_carrier)
+                    ? "Trackingnummer"
+                    : "DAO-fragtkode"}: {order.tracking_number}
                 </p>
               )}
 
-              {order.shipping_label_url && (
+              {!isShopCarrier(order.shipping_carrier) && order.shipping_label_url && (
                 <a
                   href={order.shipping_label_url}
                   target="_blank"
@@ -1169,8 +1216,12 @@ function StatusExplanation({
         order.shipping_method === "pickup"
           ? "Betalingen er modtaget. Gør varen klar og markér den som klar til afhentning."
           : order.shipping_shipment_id || order.tracking_number
-            ? "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt."
-            : "Betalingen er modtaget. Generér DAO-fragtkoden, før du sender varen.",
+            ? isShopCarrier(order.shipping_carrier)
+              ? "Forsendelsen er oprettet. Hent fragtpapirerne, og indlevér pakken hos fragtfirmaet, før du markerer den som sendt."
+              : "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt."
+            : isShopCarrier(order.shipping_carrier)
+              ? "Betalingen er modtaget. Opret forsendelsen og hent fragtpapirerne, før du sender varen."
+              : "Betalingen er modtaget. Generér DAO-fragtkoden, før du sender varen.",
       icon: Clock3,
     },
     ready_for_pickup: {
@@ -1279,6 +1330,27 @@ function DetailRow({
       <span>{value}</span>
     </div>
   );
+}
+
+type SupportedCarrier = "dao" | "gls" | "postnord";
+
+function getShippingCarrier(value: string | null): SupportedCarrier | null {
+  const carrier = value?.trim().toLowerCase();
+  if (!carrier || carrier === "dao") return "dao";
+  if (carrier === "gls" || carrier === "postnord") return carrier;
+  return null;
+}
+
+function isShopCarrier(value: string | null): boolean {
+  const carrier = getShippingCarrier(value);
+  return carrier === "gls" || carrier === "postnord";
+}
+
+function getCarrierName(value: string | null): string {
+  const carrier = getShippingCarrier(value);
+  if (carrier === "gls") return "GLS";
+  if (carrier === "postnord") return "PostNord";
+  return "DAO";
 }
 
 function getEffectiveStatus(

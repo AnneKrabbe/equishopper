@@ -9,14 +9,16 @@
  */
 
 import { DaoProvider } from "./dao";
+import { ShopProvider } from "./shop";
 import type {
   ShipmentRequest,
   TrackingResponse,
+  ShippingProvider,
 } from "./types";
 
 export const DEFAULT_SHIPPING_CARRIER = "dao" as const;
 
-export type ShippingCarrier = typeof DEFAULT_SHIPPING_CARRIER;
+export type ShippingCarrier = ShippingProvider;
 
 export type ShippingAddress = {
   name?: string | null;
@@ -75,13 +77,10 @@ export function normalizeShippingCarrier(
 ): ShippingCarrier {
   const normalized = carrier?.trim().toLowerCase();
 
-  if (!normalized || normalized === "dao") {
-    return DEFAULT_SHIPPING_CARRIER;
-  }
+  if (!normalized || normalized === "dao") return DEFAULT_SHIPPING_CARRIER;
+  if (normalized === "gls" || normalized === "postnord") return normalized;
 
-  throw new Error(
-    `Fragtfirmaet "${carrier}" understøttes ikke. Equishopper bruger DAO.`,
-  );
+  throw new Error(`Fragtfirmaet "${carrier}" understøttes ikke.`);
 }
 
 /**
@@ -111,19 +110,13 @@ export async function createShipment(
     request.provider,
   );
 
-  if (carrier !== "dao") {
-    throw new Error(
-      `Fragtfirmaet "${carrier}" understøttes ikke.`,
-    );
-  }
-
-  const provider = new DaoProvider();
-
-  const result =
-    await provider.createShipment(request);
+  // Bevar den eksisterende, testede DAO-adapter uændret.
+  const result = carrier === "dao"
+    ? await new DaoProvider().createShipment(request)
+    : await new ShopProvider(carrier).createShipment(request);
 
   return {
-    carrier: "dao",
+    carrier,
     shipmentId: result.shipmentId || null,
     trackingNumber:
       result.trackingNumber || null,

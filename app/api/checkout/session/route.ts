@@ -4,9 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { calculateBuyerProtectionOere, calculateShippingOere } from "@/lib/checkout-pricing";
 
 type CheckoutBody = {
   shippingMethod?: "shipping" | "pickup";
+  shippingCarrier?: "dao" | "gls" | "postnord";
   fullName?: string;
   addressLine1?: string;
   postalCode?: string;
@@ -88,18 +90,28 @@ type SellerFeeResult = {
   fee_bps: number;
 };
 
+const SHIPPING_GROUPS = {
+  dao: "dao_shop",
+  gls: "gls_shop",
+  postnord: "postnord_shop",
+} as const;
+
+type ShippingCarrier = keyof typeof SHIPPING_GROUPS;
+function isShippingCarrier(value: unknown): value is ShippingCarrier {
+  return value === "dao" || value === "gls" || value === "postnord";
+}
+
 function buildShippingSnapshot(
   listings: ListingShippingRow[],
   shippingMethod: "shipping" | "pickup",
+  carrier: ShippingCarrier,
+  catalog: ShippingProductRow[],
   combinedProduct: ShippingProductRow | null,
 ): ShippingSnapshot {
   if (shippingMethod === "pickup") {
     if (listings.some((listing) => listing.pickup_available === false)) {
-      throw new Error(
-        "Afhentning er ikke muligt for en eller flere varer. Vælg fragt.",
-      );
+      throw new Error("Afhentning er ikke muligt for en eller flere varer. Vælg fragt.");
     }
-
     return {
       shippingPrice: 0,
       shippingPriceAmount: 0,
@@ -112,98 +124,53 @@ function buildShippingSnapshot(
       shippingMaxWeightGrams: null,
     };
   }
-
-  if (listings.length === 0) {
-    throw new Error(
-      "Ordren indeholder ingen annoncer, som kan fragtsættes.",
-    );
-  }
-
-  const products = listings.map((listing) => {
+  if (!listings.length) throw new Error("Ordren indeholder ingen fragtbare varer.");
+  for (const listing of listings) {
     const product = listing.shipping_product;
-
-    if (!listing.shipping_available) {
-      throw new Error(
-        "En eller flere varer kan kun afhentes.",
-      );
+    if (!listing.shipping_available || !listing.shipping_product_id || !product ||
+        !product.active || !product.outbound_enabled ||
+        !Number.isFinite(product.max_weight_grams) || product.max_weight_grams <= 0 ||
+        product.max_weight_grams > 15000) {
+      throw new Error("En eller flere varer har ikke en gyldig fragtklasse (maks. 15 kg).");
     }
-
-    if (
-      !listing.shipping_product_id ||
-      !product ||
-      !product.active ||
-      !product.outbound_enabled ||
-      product.carrier.toLowerCase() !== "dao"
-    ) {
-      throw new Error(
-        "En eller flere varer mangler en gyldig DAO-pakkeklasse.",
-      );
-    }
-
-    if (product.currency.toLowerCase() !== "dkk") {
-      throw new Error(
-        "DAO-fragtproduktet har en ugyldig valuta.",
-      );
-    }
-
-    if (
-      !Number.isInteger(product.price_amount) ||
-      product.price_amount <= 0
-    ) {
-      throw new Error(
-        "DAO-fragtproduktet har en ugyldig pris.",
-      );
-    }
-
-    return product;
-  });
-
-  if (products.length > 1) {
-    if (!combinedProduct || !combinedProduct.active || !combinedProduct.outbound_enabled ||
-        combinedProduct.package_group !== "dao_shop" ||
-        combinedProduct.carrier.toLowerCase() !== "dao" ||
-        combinedProduct.currency.toLowerCase() !== "dkk" ||
-        !Number.isInteger(combinedProduct.price_amount) || combinedProduct.price_amount <= 0 ||
-        !Number.isFinite(combinedProduct.max_weight_grams) || combinedProduct.max_weight_grams <= 0) {
-      throw new Error("Vælg en gyldig fælles DAO-pakkeklasse.");
-    }
-    const amount = Math.ceil(combinedProduct.price_amount / 100) * 100;
-    return {
-      shippingPrice: amount / 100,
-      shippingPriceAmount: amount,
-      shippingProductId: combinedProduct.id,
-      shippingProductCode: combinedProduct.product_code,
-      shippingProductName: combinedProduct.name,
-      shippingPackageGroup: combinedProduct.package_group,
-      shippingCurrency: "dkk",
-      shippingDeliveryMethod: combinedProduct.delivery_method,
-      shippingMaxWeightGrams: combinedProduct.max_weight_grams,
-    };
   }
+  const options = catalog.filter((product) =>
+    product.carrier.toLowerCase() === carrier &&
+    product.package_group === SHIPPING_GROUPS[carrier] &&
+    product.active && product.outbound_enabled &&
+    product.currency.toLowerCase() === "dkk" &&
+    Number.isInteger(product.price_amount) && product.price_amount > 0 &&
+    [1000, 5000, 10000, 15000].includes(product.max_weight_grams),
+  ).sort((a, b) => a.max_weight_grams - b.max_weight_grams);
 
-  const shippingPriceAmount = products.reduce(
-  (sum, product) =>
-    sum + Math.ceil(product.price_amount / 100) * 100,
-  0,
-);
-
-  if (products.length === 1) {
-    const product = products[0];
-
-    return {
-      shippingPrice: shippingPriceAmount / 100,
-      shippingPriceAmount,
-      shippingProductId: product.id,
-      shippingProductCode: product.product_code,
-      shippingProductName: product.name,
-      shippingPackageGroup: product.package_group,
-      shippingCurrency: product.currency.toLowerCase(),
-      shippingDeliveryMethod: product.delivery_method,
-      shippingMaxWeightGrams: product.max_weight_grams,
-    };
+  let chosen: ShippingProductRow | undefined;
+  if (listings.length > 1) {
+    chosen = options.find((option) => option.id === combinedProduct?.id);
+    if (!chosen) throw new Error("Den valgte samlede fragtklasse er ugyldig.");
+  } else {
+    const listingProduct = listings[0].shipping_product!;
+    if (carrier === "dao" && listingProduct.carrier.toLowerCase() === "dao") {
+      // Bevar annoncen's eksisterende DAO-klasse ved ét køb.
+      chosen = listingProduct;
+    } else {
+      chosen = options.find((option) =>
+        option.max_weight_grams >= listingProduct.max_weight_grams,
+      );
+    }
+    if (!chosen) throw new Error("Ingen fragtklasse passer til varens vægt.");
   }
-
-  throw new Error("Uventet antal fragtprodukter.");
+  const shippingPriceAmount = calculateShippingOere(chosen.price_amount);
+  return {
+    shippingPrice: shippingPriceAmount / 100,
+    shippingPriceAmount,
+    shippingProductId: chosen.id,
+    shippingProductCode: chosen.product_code,
+    shippingProductName: chosen.name,
+    shippingPackageGroup: chosen.package_group,
+    shippingCurrency: "dkk",
+    shippingDeliveryMethod: chosen.delivery_method,
+    shippingMaxWeightGrams: chosen.max_weight_grams,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -226,11 +193,16 @@ export async function POST(request: NextRequest) {
     const body =
       (await request.json()) as CheckoutBody;
 
-    if (!body.shippingMethod) {
+    if (!body.shippingMethod || !["shipping", "pickup"].includes(body.shippingMethod)) {
       return NextResponse.json(
         { error: "Vælg en leveringsmetode." },
         { status: 400 }
       );
+    }
+
+    const shippingCarrier = body.shippingCarrier ?? "dao";
+    if (!isShippingCarrier(shippingCarrier)) {
+      return NextResponse.json({ error: "Vælg et gyldigt fragtfirma." }, { status: 400 });
     }
 
     if (body.shippingMethod === "shipping") {
@@ -259,7 +231,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "Vælg en DAO-pakkeshop, før du går til betaling.",
+              "Vælg en pakkeshop, før du går til betaling.",
           },
           { status: 400 }
         );
@@ -383,7 +355,7 @@ export async function POST(request: NextRequest) {
     const order = orderData as OrderRow;
 
     /*
-     * Hent varerne og DAO-fragten server-side.
+     * Hent varerne og fragtprisen server-side.
      * Browserens pris bruges aldrig som facit.
      */
     const {
@@ -451,30 +423,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Slå køberens valgte produkt op på serveren. Pris og vægt læses aldrig fra browseren.
+    // Hent priser og vægtklasser fra databasen. Browserens priser bruges aldrig.
     let combinedProduct: ShippingProductRow | null = null;
     if (body.shippingMethod === "shipping" && listingIds.length > 1) {
       if (!body.combinedShippingProductId ||
           !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(body.combinedShippingProductId)) {
-        throw new Error("Vælg en samlet DAO-pakkeklasse.");
+        throw new Error("Vælg en samlet fragtklasse.");
       }
       const { data: chosenProduct, error: chosenError } = await supabaseAdmin
         .from("shipping_products")
         .select("id, carrier, product_code, name, package_group, max_weight_grams, price_amount, currency, delivery_method, active, outbound_enabled")
         .eq("id", body.combinedShippingProductId)
         .maybeSingle();
-      if (chosenError || !chosenProduct) throw new Error("DAO-pakkeklassen findes ikke.");
+      if (chosenError || !chosenProduct) throw new Error("Fragtklassen findes ikke.");
       combinedProduct = chosenProduct as ShippingProductRow;
     }
+    const { data: catalogData, error: catalogError } = await supabaseAdmin
+      .from("shipping_products")
+      .select("id, carrier, product_code, name, package_group, max_weight_grams, price_amount, currency, delivery_method, active, outbound_enabled")
+      .eq("carrier", shippingCarrier)
+      .eq("active", true)
+      .eq("outbound_enabled", true);
+    if (catalogError) throw new Error("Fragtpriserne kunne ikke hentes.");
+
     const shippingSnapshot = buildShippingSnapshot(
       listingData as unknown as ListingShippingRow[],
       body.shippingMethod,
+      shippingCarrier,
+      (catalogData ?? []) as ShippingProductRow[],
       combinedProduct,
     );
 
     const subtotal = Number(order.subtotal);
-    const buyerProtectionFee =
-      Number(order.buyer_protection_fee);
+    const buyerProtectionFee = calculateBuyerProtectionOere(Math.round(subtotal * 100)) / 100;
 
     if (
       !Number.isFinite(subtotal) ||
@@ -501,10 +482,11 @@ export async function POST(request: NextRequest) {
       .update({
         shipping_price:
           shippingSnapshot.shippingPrice,
+        buyer_protection_fee: buyerProtectionFee,
         total: correctedTotal,
         shipping_carrier:
           body.shippingMethod === "shipping"
-            ? "dao"
+            ? shippingCarrier
             : null,
         shipping_product_id:
           shippingSnapshot.shippingProductId,
@@ -553,7 +535,7 @@ export async function POST(request: NextRequest) {
 
     if (shippingSaveError) {
       throw new Error(
-        "DAO-fragten kunne ikke gemmes på ordren.",
+        "Fragten kunne ikke gemmes på ordren.",
       );
     }
 
@@ -639,8 +621,8 @@ export async function POST(request: NextRequest) {
      * Gebyret beregnes kun af varernes pris.
      * Køberbeskyttelsen tilhører platformen.
      *
-     * DAO-fragten tilhører ikke sælgeren.
-     * Equishopper opkræver fragten og betaler DAO.
+     * Fragten tilhører ikke sælgeren.
+     * Equishopper opkræver fragten og betaler transportøren.
      */
     const subtotalOere =
       toOere(order.subtotal);
@@ -775,7 +757,7 @@ export async function POST(request: NextRequest) {
 
           shipping_carrier:
             body.shippingMethod === "shipping"
-              ? "dao"
+              ? shippingCarrier
               : "pickup",
 
           shipping_price_amount:
@@ -805,7 +787,7 @@ export async function POST(request: NextRequest) {
 
             shipping_carrier:
               body.shippingMethod === "shipping"
-                ? "dao"
+                ? shippingCarrier
                 : "pickup",
 
             shipping_price_amount:
@@ -855,7 +837,7 @@ export async function POST(request: NextRequest) {
                     product_data: {
                       name:
                         shippingSnapshot.shippingProductName ||
-                        "DAO-fragt",
+                        "Fragt",
                     },
                   },
                 },
@@ -870,7 +852,7 @@ export async function POST(request: NextRequest) {
 
               unit_amount:
                 toOere(
-                  order.buyer_protection_fee
+                  buyerProtectionFee
                 ),
 
               product_data: {
