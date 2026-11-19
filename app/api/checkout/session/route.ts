@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { calculateBuyerProtectionOere, calculateShippingOere } from "@/lib/checkout-pricing";
 
 type CheckoutBody = {
+  cartItemIds?: string[];
   shippingMethod?: "shipping" | "pickup";
   shippingCarrier?: "dao" | "gls" | "postnord";
   fullName?: string;
@@ -35,7 +36,6 @@ type OrderRow = {
   buyer_protection_fee: number | string;
   total: number | string;
   currency: string;
-  checkout_expires_at: string | null;
 };
 
 type OrderItemRow = {
@@ -175,6 +175,7 @@ function buildShippingSnapshot(
 
 export async function POST(request: NextRequest) {
   let orderId: string | null = null;
+  let stripeSessionId: string | null = null;
 
   try {
     const authorization =
@@ -269,6 +270,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { error: expiryError } = await supabaseAdmin.rpc(
+      "expire_cart_reservations", { p_buyer_id: user.id },
+    );
+    if (expiryError) throw expiryError;
+
     /*
      * Reservation, validering og ordreoprettelse sker atomisk i
      * create_pending_order. Databasen låser annoncerne, så to købere
@@ -339,8 +345,7 @@ export async function POST(request: NextRequest) {
         shipping_price,
         buyer_protection_fee,
         total,
-        currency,
-        checkout_expires_at
+        currency
       `)
       .eq("id", orderId)
       .eq("buyer_id", user.id)
@@ -386,6 +391,25 @@ export async function POST(request: NextRequest) {
     const listingIds = Array.from(
       new Set(items.map((item) => item.listing_id)),
     );
+
+    const { data: cart, error: cartError } = await supabaseUser
+      .from("cart_items")
+      .select("id, listing_id, reservation_expires_at")
+      .eq("user_id", user.id)
+      .in("listing_id", listingIds);
+
+    if (
+      cartError || !cart || cart.length !== listingIds.length ||
+      cart.some((item) =>
+        item.reservation_expires_at && Date.parse(item.reservation_expires_at) <= Date.now()
+      ) ||
+      (body.cartItemIds && (
+        body.cartItemIds.length !== cart.length ||
+        cart.some((item) => !body.cartItemIds?.includes(item.id))
+      ))
+    ) {
+      throw new Error("Kurven er ændret, eller en reservation er udløbet. Opdatér kurven og prøv igen.");
+    }
 
     const {
       data: listingData,
@@ -690,15 +714,8 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL ||
       request.nextUrl.origin;
 
-    const expiresAt =
-      order.checkout_expires_at
-        ? Math.floor(
-            new Date(
-              order.checkout_expires_at
-            ).getTime() / 1000
-          )
-        : Math.floor(Date.now() / 1000) +
-          30 * 60;
+    // Stripe requires at least 30 minutes from session creation.
+    const expiresAt = Math.ceil(Date.now() / 1000) + 30 * 60 + 15;
 
     /*
      * Opret betaling på Equishoppers
@@ -863,6 +880,7 @@ export async function POST(request: NextRequest) {
           },
         ],
       });
+    stripeSessionId = session.id;
 
     /*
      * Gem Checkout Session-id.
@@ -875,13 +893,14 @@ export async function POST(request: NextRequest) {
       .update({
         stripe_checkout_session_id:
           session.id,
+        checkout_expires_at: new Date(session.expires_at * 1000).toISOString(),
       })
       .eq("id", order.id)
       .eq("payment_status", "unpaid")
       .select("id")
       .maybeSingle();
 
-    if (updateError) {
+    if (updateError || !savedOrder) {
       throw new Error(
         "Stripe-sessionen kunne ikke gemmes."
       );
@@ -893,12 +912,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (savedOrder) {
-      try {
-        await track("checkout_started");
-      } catch (error) {
-        console.warn("Kunne ikke registrere checkout_started:", error);
-      }
+    try {
+      await track("checkout_started");
+    } catch (error) {
+      console.warn("Kunne ikke registrere checkout_started:", error);
     }
 
     return NextResponse.json({
@@ -910,12 +927,16 @@ export async function POST(request: NextRequest) {
       error
     );
 
-    /*
-     * Hvis betalingen ikke kan startes,
-     * frigives varen igen.
-     */
     if (orderId) {
-      await releaseOrder(orderId);
+      try {
+        if (stripeSessionId) await stripe.checkout.sessions.expire(stripeSessionId);
+        const { error: cancelError } = await supabaseAdmin.rpc(
+          "cancel_cart_checkout", { p_order_id: orderId },
+        );
+        if (cancelError) throw cancelError;
+      } catch (cleanupError) {
+        console.error("Kunne ikke annullere checkout-ordren:", cleanupError);
+      }
     }
 
     return NextResponse.json(
@@ -928,41 +949,6 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-}
-
-async function releaseOrder(
-  orderId: string
-) {
-  const { data: items } =
-    await supabaseAdmin
-      .from("order_items")
-      .select("listing_id")
-      .eq("order_id", orderId);
-
-  const listingIds =
-    (items ?? []).map(
-      (item) => item.listing_id
-    );
-
-  if (listingIds.length > 0) {
-    await supabaseAdmin
-      .from("listings")
-      .update({
-        status: "active",
-        reserved_by: null,
-        reserved_at: null,
-      })
-      .in("id", listingIds);
-  }
-
-  await supabaseAdmin
-    .from("orders")
-    .update({
-      status: "cancelled",
-      payment_status: "cancelled",
-    })
-    .eq("id", orderId)
-    .eq("payment_status", "unpaid");
 }
 
 function toOere(
@@ -980,4 +966,82 @@ function toOere(
   }
 
   return Math.round(amount * 100);
+}
+
+export async function DELETE(request: NextRequest) {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Du skal være logget ind." }, { status: 401 });
+  }
+
+  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(
+    authorization.slice("Bearer ".length),
+  );
+  if (userError || !user) {
+    return NextResponse.json({ error: "Log ind igen for at ændre kurven." }, { status: 401 });
+  }
+
+  const cartItemId = request.nextUrl.searchParams.get("id");
+  if (!cartItemId) {
+    return NextResponse.json({ error: "Varen mangler." }, { status: 400 });
+  }
+
+  try {
+    const { data: item, error: itemError } = await supabaseAdmin
+      .from("cart_items")
+      .select("listing_id")
+      .eq("id", cartItemId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (itemError) throw itemError;
+    if (!item) return new NextResponse(null, { status: 204 });
+
+    const { data: orders, error: ordersError } = await supabaseAdmin
+      .from("orders")
+      .select("id, stripe_checkout_session_id, order_items!inner(listing_id)")
+      .eq("buyer_id", user.id)
+      .eq("payment_status", "unpaid")
+      .eq("order_items.listing_id", item.listing_id);
+    if (ordersError) throw ordersError;
+
+    for (const order of orders) {
+      if (!order.stripe_checkout_session_id) {
+        return NextResponse.json(
+          { error: "Betalingen er ved at blive startet. Prøv igen om et øjeblik." },
+          { status: 409 },
+        );
+      }
+
+      const session = await stripe.checkout.sessions.retrieve(order.stripe_checkout_session_id);
+      if (session.status !== "open" && session.status !== "expired") {
+        return NextResponse.json(
+          { error: "Betalingen er allerede sendt til behandling." },
+          { status: 409 },
+        );
+      }
+      if (session.status === "open") {
+        await stripe.checkout.sessions.expire(session.id);
+      }
+
+      const { error: cancelError } = await supabaseAdmin.rpc(
+        "cancel_cart_checkout", { p_order_id: order.id },
+      );
+      if (cancelError) throw cancelError;
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from("cart_items")
+      .delete()
+      .eq("id", cartItemId)
+      .eq("user_id", user.id);
+    if (deleteError) throw deleteError;
+
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    console.error("Kunne ikke fjerne kurvvaren:", error);
+    return NextResponse.json(
+      { error: "Varen kunne ikke fjernes. Opdatér kurven og prøv igen." },
+      { status: 409 },
+    );
+  }
 }

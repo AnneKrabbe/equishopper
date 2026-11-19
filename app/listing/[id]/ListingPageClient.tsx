@@ -284,6 +284,47 @@ export default function ListingPageClient({
     fetchListing();
   }, [id]);
 
+  const reservationVisible =
+    listing?.status?.toLowerCase() === "reserved" || Boolean(listing?.reserved_by);
+
+  useEffect(() => {
+    if (!reservationVisible) return;
+
+    let stopped = false;
+    let checking = false;
+
+    async function refreshAvailability() {
+      if (document.hidden || checking) return;
+      checking = true;
+      try {
+        const { data, error } = await supabase
+          .from("listings")
+          .select("status, reserved_by")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (stopped || error || !data) return;
+        setListing((current) => {
+          if (!current || current.id !== id) return current;
+          if (current.status === data.status && current.reserved_by === data.reserved_by) {
+            return current;
+          }
+          return { ...current, status: data.status, reserved_by: data.reserved_by };
+        });
+      } finally {
+        checking = false;
+      }
+    }
+
+    const timer = window.setInterval(() => void refreshAvailability(), 5000);
+    window.addEventListener("focus", refreshAvailability);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshAvailability);
+    };
+  }, [id, reservationVisible]);
+
   useEffect(() => {
     if (!galleryOpen) return;
 

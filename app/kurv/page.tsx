@@ -162,10 +162,37 @@ export default function CartPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("betaling") === "annulleret") {
       setErrorMessage(
-        "Betalingen blev ikke gennemført. Varen er ikke købt. Reservationen frigives automatisk senest efter 30 minutter.",
+        "Du er tilbage fra Stripe. Hvis betalingslinket stadig er åbent, kan du lukke det ved at fjerne varen.",
       );
     }
   }, []);
+
+  const cartItemIds = useMemo(() => items.map((item) => item.id), [items]);
+
+  useEffect(() => {
+    if (!cartItemIds.length) return;
+
+    let stopped = false;
+    const timer = window.setInterval(async () => {
+      if (document.hidden) return;
+      const { data, error } = await supabase
+        .from("cart_items")
+        .select("id")
+        .in("id", cartItemIds);
+      if (stopped || error) return;
+
+      const remainingIds = new Set(data.map((item) => item.id));
+      setItems((current) => {
+        const remaining = current.filter((item) => remainingIds.has(item.id));
+        return remaining.length === current.length ? current : remaining;
+      });
+    }, 15_000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [cartItemIds]);
 
   useEffect(() => {
     if (shippingMethod !== "shipping") {
@@ -508,17 +535,27 @@ export default function CartPage() {
   );
 
   async function removeItem(cartItemId: string) {
+    if (removingId || submitting) return;
+
     try {
       setRemovingId(cartItemId);
       setErrorMessage("");
 
-      const { error } = await supabase
-        .from("cart_items")
-        .delete()
-        .eq("id", cartItemId);
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (!session?.access_token) {
+        router.push("/login?redirect=/kurv");
+        return;
+      }
 
-      if (error) {
-        throw error;
+      const params = new URLSearchParams({ id: cartItemId });
+      const response = await fetch(`/api/checkout/session?${params}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!response.ok) {
+        const result = (await response.json()) as CheckoutResponse;
+        throw new Error(result.error || "Varen kunne ikke fjernes.");
       }
 
       setItems((current) =>
@@ -548,7 +585,7 @@ export default function CartPage() {
 
   async function executeCheckout() {
 
-    if (items.length === 0 || submitting) return;
+    if (items.length === 0 || submitting || removingId) return;
     if (!singleSeller) {
       setErrorMessage("Kurven kan endnu kun betales med varer fra én sælger ad gangen.");
       return;
@@ -633,6 +670,7 @@ export default function CartPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
+          cartItemIds: items.map((item) => item.id),
           shippingMethod,
           shippingCarrier: selectedCarrier,
           combinedShippingProductId: combinedShipping && shippingMethod === "shipping"
@@ -747,6 +785,10 @@ export default function CartPage() {
                 <h2 className="font-serif text-2xl text-[#063f32]">
                   Varer
                 </h2>
+                <p className="mt-2 text-sm text-stone-600">
+                  Nye varer holdes i 30 minutter fra de lægges i kurven.
+                  Start betalingen inden fristen.
+                </p>
 
                 <div className="mt-5 divide-y divide-[#eadfcb]">
                   {items.map((item) => {
@@ -855,7 +897,7 @@ export default function CartPage() {
                           type="button"
                           onClick={() => removeItem(item.id)}
                           disabled={
-                            removingId === item.id || submitting
+                            removingId !== null || submitting
                           }
                           aria-label="Fjern varen"
                           className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-stone-200 text-stone-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
@@ -1303,6 +1345,7 @@ export default function CartPage() {
                   type="submit"
                   disabled={
                     submitting ||
+                    removingId !== null ||
                     !acceptedTerms ||
                     (combinedShipping && shippingMethod === "shipping" && !carrierOptions.length) ||
                     (shippingMethod === "shipping" &&

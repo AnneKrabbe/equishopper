@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { ShipmondoApiError } from "@/lib/shipping/shipmondo";
 import { createShipment } from "@/lib/shipping/shipping-service";
 import type { ShipmentRequest, ShippingProvider } from "@/lib/shipping/types";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -367,9 +368,42 @@ export async function POST(
       }
     }
 
-    // Ved usikre API-fejl beholdes reservationen. Det forhindrer dobbelt
-    // køb af fragtlabels. En administrator må kontrollere Shipmondo før retry.
-    const shipment = await createShipment(shipmentRequest);
+    let shipment: Awaited<ReturnType<typeof createShipment>>;
+    try {
+      shipment = await createShipment(shipmentRequest);
+    } catch (error) {
+      // PostNord afviser denne referencevalidering før booking af label.
+      if (
+        carrier === "postnord" &&
+        error instanceof ShipmondoApiError &&
+        error.status === 422 &&
+        /referenceNo cannot be blank and cannot be longer than 35 characters/i.test(error.responseMessage)
+      ) {
+        const { data: released, error: releaseError } = await supabaseAdmin
+          .from("orders")
+          .update({ shipping_booking_started_at: null })
+          .eq("id", order.id)
+          .eq("seller_id", user.id)
+          .eq("shipping_booking_started_at", bookingStartedAt)
+          .is("shipping_shipment_id", null)
+          .is("tracking_number", null)
+          .is("shipping_label_created_at", null)
+          .select("id")
+          .maybeSingle();
+
+        if (releaseError) {
+          console.error("Kunne ikke frigive den afviste PostNord-booking:", releaseError);
+        } else if (released) {
+          return NextResponse.json(
+            { error: "PostNord afviste ordrereferencen. Forsendelsen kan forsøges oprettet igen." },
+            { status: 422 },
+          );
+        }
+      }
+
+      // Behold låsen, hvis Shipmondo kan have booket forsendelsen.
+      throw error;
+    }
 
     const orderUpdate = {
       shipping_carrier: carrier,

@@ -20,6 +20,16 @@ function getAuthorizationHeader() {
   return `Basic ${encoded}`;
 }
 
+export class ShipmondoApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly responseMessage: string,
+  ) {
+    super(`Shipmondo API returnerede ${status}.`);
+    this.name = "ShipmondoApiError";
+  }
+}
+
 export async function shipmondoRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -56,9 +66,12 @@ export async function shipmondoRequest<T>(
       data,
     });
 
-    throw new Error(
-      `Shipmondo API returnerede ${response.status}.`,
-    );
+    const responseMessage =
+      data && typeof data === "object" && "error" in data && typeof data.error === "string"
+        ? data.error
+        : "";
+
+    throw new ShipmondoApiError(response.status, responseMessage);
   }
 
   return data as T;

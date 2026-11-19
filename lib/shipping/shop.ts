@@ -52,13 +52,27 @@ export class ShopProvider {
       throw new Error("Afsender eller modtager mangler adresseoplysninger.");
     }
 
+    const customReference = request.reference?.trim();
+    let reference = (customReference || `Equishopper ${request.orderId}`).slice(0, 40);
+    if (this.carrier === "postnord") {
+      // PostNord kræver en reference på højst 35 tegn.
+      // Et ordre-UUID uden bindestreger bruger 32 tegn.
+      reference = customReference && customReference.length <= 35
+        ? customReference
+        : request.orderId.trim().replace(/-/g, "");
+
+      if (!reference || reference.length > 35) {
+        throw new Error("Der kunne ikke dannes en gyldig reference til PostNord.");
+      }
+    }
+
     const payload = {
       // GLS og PostNord købes på Shipmondos aftaler, ikke DAO's egen.
       own_agreement: false,
       label_format: "a4_pdf",
       product_code: PRODUCTS[this.carrier],
-      service_codes: "EMAIL_NT",
-      reference: (request.reference?.trim() || `Equishopper ${request.orderId}`).slice(0, 40),
+      service_codes: this.carrier === "postnord" ? "EMAIL_NT,QR_CODE" : "EMAIL_NT",
+      reference,
       automatic_select_service_point: false,
       service_point_id: servicePointId,
       parties: [

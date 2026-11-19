@@ -56,25 +56,7 @@ type ImageItem = {
 
 type ShippingProduct = {
   id: string;
-  carrier: string;
-  product_code: string;
-  name: string;
-  description: string | null;
-  package_group: string;
-  min_weight_grams: number;
   max_weight_grams: number;
-  max_length_cm: number | string;
-  max_width_cm: number | string;
-  max_height_cm: number | string;
-  max_girth_plus_length_cm: number | string | null;
-  size_rule_text: string | null;
-  price_amount: number;
-  currency: string;
-  vat_included: boolean;
-  outbound_enabled: boolean;
-  return_enabled: boolean;
-  delivery_method: string;
-  sort_order: number;
 };
 
 export default function SellPage() {
@@ -285,31 +267,13 @@ export default function SellPage() {
 
         const { data, error } = await supabase
           .from("shipping_products")
-          .select(`
-            id,
-            carrier,
-            product_code,
-            name,
-            description,
-            package_group,
-            min_weight_grams,
-            max_weight_grams,
-            max_length_cm,
-            max_width_cm,
-            max_height_cm,
-            max_girth_plus_length_cm,
-            size_rule_text,
-            price_amount,
-            currency,
-            vat_included,
-            outbound_enabled,
-            return_enabled,
-            delivery_method,
-            sort_order
-          `)
+          .select("id, max_weight_grams")
           .eq("active", true)
           .eq("outbound_enabled", true)
           .eq("carrier", "dao")
+          .gt("max_weight_grams", 0)
+          .lte("max_weight_grams", 15000)
+          .order("max_weight_grams", { ascending: true })
           .order("sort_order", { ascending: true });
 
         if (error) {
@@ -319,15 +283,12 @@ export default function SellPage() {
         if (!mounted) return;
 
         const products = (data ?? []) as ShippingProduct[];
-        setShippingProducts(products);
-
-        if (
-          shippingAvailable &&
-          !selectedShippingProductId &&
-          products.length > 0
-        ) {
-          setSelectedShippingProductId(products[0].id);
-        }
+        setShippingProducts(
+          products.filter((product, index) =>
+            index === 0 ||
+            product.max_weight_grams !== products[index - 1].max_weight_grams,
+          ),
+        );
       } catch (error) {
         console.error("Kunne ikke hente fragtprodukter:", error);
 
@@ -506,7 +467,6 @@ const filteredBrands = brandOptions
 
     return a.localeCompare(b, "da");
   });
-  
   const finalBrand =
     brand === "Andet"
       ? customBrand.trim()
@@ -534,8 +494,8 @@ const filteredBrands = brandOptions
       "Fragt",
       shippingAvailable
         ? selectedShippingProduct
-          ? `Op til ${formatWeight(selectedShippingProduct.max_weight_grams)} · Køber vælger fragtfirma`
-          : "Vælg pakkestørrelse"
+          ? `Op til ${formatWeight(selectedShippingProduct.max_weight_grams)}`
+          : "Vælg vægtklasse"
         : "Nej",
     ],
     ["Afhentning", pickupAvailable ? "Ja" : "Nej"],
@@ -714,14 +674,14 @@ function resetCategoryFields(newMainCategory: string) {
 
       if (!selectedShippingProductId) {
         setMessage(
-          "Vælg den pakkestørrelse, varen skal sendes i.",
+          "Vælg pakkens vægtklasse.",
         );
         return;
       }
 
       if (!selectedShippingProduct) {
         setMessage(
-          "Den valgte pakkestørrelse er ikke længere tilgængelig. Vælg en anden.",
+          "Den valgte vægtklasse er ikke længere tilgængelig. Vælg en anden.",
         );
         return;
       }
@@ -991,7 +951,6 @@ const { data: listing, error } = await supabase
     </Field>
   )}
 </div>
-             
              <div className="grid gap-5 md:grid-cols-2">
   <Field label="Underkategori" required>
     <Autocomplete
@@ -1315,7 +1274,7 @@ const { data: listing, error } = await supabase
               <div className="grid gap-4 md:grid-cols-3">
                 <ChoiceCard
                   title="Fragt muligt"
-                  description="Køberen vælger DAO, GLS eller PostNord ved betaling"
+                  description="Køberen vælger fragt ved betaling"
                   checked={shippingAvailable}
                   onChange={setShippingAvailable}
                 />
@@ -1338,26 +1297,13 @@ const { data: listing, error } = await supabase
               {shippingAvailable && (
                 <div className="mt-7">
                   <div className="rounded-[24px] border border-[#eadfcb] bg-white p-5 md:p-6">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="font-serif text-2xl text-[#063f32]">
-                          Vælg pakkestørrelse
-                        </h3>
+                    <h3 className="font-serif text-2xl text-[#063f32]">
+                      Vælg vægtklasse
+                    </h3>
 
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
-                          Vælg vægtklasse ud fra hele pakken inklusive emballage.
-                          Køberen vælger DAO, GLS eller PostNord og pakkeshop
-                          ved betaling. Målgrænserne er forskellige hos de tre
-                          fragtfirmaer, så kontrollér også pakkens mål inden
-                          afsendelse. Er du i tvivl om vægten, så vælg en
-                          større klasse.
-                        </p>
-                      </div>
-
-                      <span className="inline-flex w-fit rounded-full bg-[#edf5f0] px-3 py-1.5 text-xs font-semibold text-[#0b5a47]">
-                        DAO · GLS · PostNord
-                      </span>
-                    </div>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+                      Vælg ud fra hele pakkens vægt inklusive emballage.
+                    </p>
 
                     <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
                       <span className="font-semibold">
@@ -1369,11 +1315,11 @@ const { data: listing, error } = await supabase
 
                     {shippingProductsLoading ? (
                       <div className="mt-5 rounded-2xl border border-dashed border-[#d4af37]/60 bg-[#fffdf8] px-5 py-8 text-center text-sm text-stone-600">
-                        Henter pakkestørrelser...
+                        Henter vægtklasser…
                       </div>
                     ) : shippingProducts.length === 0 ? (
                       <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-5 text-sm text-red-700">
-                        Der er ingen aktive fragtprodukter. Prøv at
+                        Der er ingen vægtklasser tilgængelige. Prøv at
                         genindlæse siden.
                       </div>
                     ) : (
@@ -1449,7 +1395,6 @@ const { data: listing, error } = await supabase
   }
   className="inline-flex w-full shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#063f32] px-9 py-4 font-medium text-white transition hover:bg-[#052f26] disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
 >
-              
                 {isSubmitting
                   ? "Opretter annonce..."
                   : isProcessingImages
@@ -2027,46 +1972,13 @@ function ShippingProductSelector({
                 )}
               </span>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="font-semibold text-[#063f32]">
-                    Op til {formatWeight(product.max_weight_grams)}
-                  </p>
-
-                  <p className="text-xs font-medium text-stone-500">
-                    Køber vælger fragtfirma og betaler fragten
-                  </p>
-                </div>
-
-                <div className="mt-3 text-sm text-stone-600">
-                  <ShippingFact
-                    label="Vægt"
-                    value={formatWeight(product.max_weight_grams)}
-                  />
-                </div>
-
-              </div>
+              <span className="font-semibold text-[#063f32]">
+                Op til {formatWeight(product.max_weight_grams)}
+              </span>
             </div>
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function ShippingFact({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-stone-500">{label}</span>
-      <span className="text-right font-medium text-[#063f32]">
-        {value}
-      </span>
     </div>
   );
 }

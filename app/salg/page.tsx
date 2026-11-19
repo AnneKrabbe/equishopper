@@ -416,7 +416,9 @@ export default function SalesPage() {
         );
       }
 
-      if (isShopCarrier(order.shipping_carrier)) {
+      if (getShippingCarrier(order.shipping_carrier) === "postnord") {
+        setSuccessMessage("PostNord-forsendelsen er oprettet. Hent QR-koden nedenfor.");
+      } else if (isShopCarrier(order.shipping_carrier)) {
         setSuccessMessage(
           result?.alreadyCreated
             ? "Forsendelsen var allerede oprettet. Hent fragtpapirerne nedenfor."
@@ -634,9 +636,11 @@ export default function SalesPage() {
                 disabled={!packageLimitsConfirmed}
                 className="rounded-full bg-[#d4af37] px-5 py-3 font-semibold text-[#063f32] transition hover:bg-[#e1c05a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isShopCarrier(shipmentReminderOrder.shipping_carrier)
-                  ? "Bekræft og opret forsendelse"
-                  : "Bekræft og opret DAO-fragtkode"}
+                {getShippingCarrier(shipmentReminderOrder.shipping_carrier) === "postnord"
+                  ? "Bekræft og dan QR-kode"
+                  : isShopCarrier(shipmentReminderOrder.shipping_carrier)
+                    ? "Bekræft og opret forsendelse"
+                    : "Bekræft og opret DAO-fragtkode"}
               </button>
               <button
                 type="button"
@@ -740,6 +744,8 @@ export default function SalesPage() {
 
                 <div className="space-y-5">
                   {group.orders.map((order) => {
+                    const carrier = getShippingCarrier(order.shipping_carrier);
+                    const isPostNord = carrier === "postnord";
                     const effectiveStatus =
                       getEffectiveStatus(order);
                     const isExpanded =
@@ -869,9 +875,11 @@ export default function SalesPage() {
                                   {!hasShipment ? (
                                     <>
                                       <p className="mt-2 text-sm leading-6 text-stone-600">
-                                        {isShopCarrier(order.shipping_carrier)
-                                          ? `Opret først din forsendelse med ${getCarrierName(order.shipping_carrier)}. Hent derefter QR-kode, hvis den tilbydes, eller en fragtlabel. Følg fragtfirmaets instruktioner, og markér først varen som sendt efter indlevering.`
-                                          : "Generér først din DAO-fragtkode. Når koden er oprettet, skriver du den tydeligt på pakken med vandfast tusch. Aflever derefter pakken hos DAO og markér varen som sendt."}
+                                        {isPostNord
+                                          ? "Dan QR-koden og vis den i PostNord-pakkeshoppen, når du indleverer pakken. Markér først ordren som sendt efter indlevering."
+                                          : isShopCarrier(order.shipping_carrier)
+                                            ? `Opret først din forsendelse med ${getCarrierName(order.shipping_carrier)}. Hent derefter QR-kode, hvis den tilbydes, eller en fragtlabel. Følg fragtfirmaets instruktioner, og markér først varen som sendt efter indlevering.`
+                                            : "Generér først din DAO-fragtkode. Når koden er oprettet, skriver du den tydeligt på pakken med vandfast tusch. Aflever derefter pakken hos DAO og markér varen som sendt."}
                                       </p>
 
                                       <button
@@ -893,10 +901,12 @@ export default function SalesPage() {
                                         )}
 
                                         {generatingShipmentCodeOrderId === order.id
-                                          ? "Opretter forsendelse..."
-                                          : isShopCarrier(order.shipping_carrier)
-                                            ? "Opret forsendelse"
-                                            : "Generér DAO-fragtkode"}
+                                          ? isPostNord ? "Danner QR-kode…" : "Opretter forsendelse..."
+                                          : isPostNord
+                                            ? "Dan QR-kode"
+                                            : isShopCarrier(order.shipping_carrier)
+                                              ? "Opret forsendelse"
+                                              : "Generér DAO-fragtkode"}
                                       </button>
                                     </>
                                   ) : (
@@ -918,9 +928,11 @@ export default function SalesPage() {
                                             )}
 
                                             <p className="mt-3 text-sm leading-6 text-white">
-                                              {isShopCarrier(order.shipping_carrier)
-                                                ? "Hent QR-kode, hvis fragtfirmaet tilbyder den, ellers fragtlabel nedenfor. Trackingnummeret er ikke i sig selv en indleveringskode. Følg fragtfirmaets instruktioner, og markér først ordren som sendt efter indlevering."
-                                                : "Skriv koden tydeligt på pakken med vandfast tusch, og aflever pakken hos DAO. Markér først ordren som sendt, når du har afleveret pakken."}
+                                              {isPostNord
+                                                ? "Hent QR-koden nedenfor, og vis den på din telefon i en PostNord-pakkeshop, når du indleverer pakken. Markér først ordren som sendt efter indlevering."
+                                                : isShopCarrier(order.shipping_carrier)
+                                                  ? "Hent QR-kode, hvis fragtfirmaet tilbyder den, ellers fragtlabel nedenfor. Trackingnummeret er ikke i sig selv en indleveringskode. Følg fragtfirmaets instruktioner, og markér først ordren som sendt efter indlevering."
+                                                  : "Skriv koden tydeligt på pakken med vandfast tusch, og aflever pakken hos DAO. Markér først ordren som sendt, når du har afleveret pakken."}
                                             </p>
                                           </div>
                                         </div>
@@ -1019,14 +1031,14 @@ export default function SalesPage() {
 
                           {order.shipping_method === "shipping" &&
                             hasShipment &&
-                            getShippingCarrier(order.shipping_carrier) && (
+                            carrier && (
                               <div className="mt-5 rounded-2xl border border-[#eadfcb] bg-white p-4">
                                 <p className="font-semibold text-[#063f32]">
-                                  Sporing og fragtpapirer
+                                  {isPostNord ? "Sporing og QR-kode" : "Sporing og fragtpapirer"}
                                 </p>
                                 <ShippingDocuments
                                   orderId={order.id}
-                                  carrier={getShippingCarrier(order.shipping_carrier)}
+                                  carrier={carrier}
                                   trackingNumber={order.tracking_number}
                                   trackingUrl={order.shipping_tracking_url}
                                   isSeller
@@ -1219,9 +1231,11 @@ function StatusExplanation({
             ? isShopCarrier(order.shipping_carrier)
               ? "Forsendelsen er oprettet. Hent fragtpapirerne, og indlevér pakken hos fragtfirmaet, før du markerer den som sendt."
               : "DAO-fragtkoden er oprettet. Skriv koden tydeligt på pakken med vandfast tusch, aflever pakken hos DAO, og markér derefter varen som sendt."
-            : isShopCarrier(order.shipping_carrier)
-              ? "Betalingen er modtaget. Opret forsendelsen og hent fragtpapirerne, før du sender varen."
-              : "Betalingen er modtaget. Generér DAO-fragtkoden, før du sender varen.",
+            : getShippingCarrier(order.shipping_carrier) === "postnord"
+              ? "Betalingen er modtaget. Dan QR-koden, før du indleverer pakken."
+              : isShopCarrier(order.shipping_carrier)
+                ? "Betalingen er modtaget. Opret forsendelsen og hent fragtpapirerne, før du sender varen."
+                : "Betalingen er modtaget. Generér DAO-fragtkoden, før du sender varen.",
       icon: Clock3,
     },
     ready_for_pickup: {

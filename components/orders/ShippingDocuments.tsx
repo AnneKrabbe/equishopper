@@ -19,6 +19,10 @@ export default function ShippingDocuments({ orderId, carrier, trackingNumber, tr
     ? `https://track.shipmondo.com/${TRACKING_SLUG[carrier]}/${encodeURIComponent(trackingNumber)}`
     : null;
   const link = trackingUrl?.startsWith("https://") ? trackingUrl : fallback;
+  const isPostNord = carrier === "postnord";
+  const downloadLabel = isPostNord ? "Hent QR-kode" : "Hent QR eller fragtlabel";
+  const loadingLabel = isPostNord ? "Henter QR-kode…" : "Henter fragtpapir...";
+
   async function downloadDocument() {
     if (!isSeller || !carrier || carrier === "dao" || loading) return;
     setLoading(true); setMessage("");
@@ -49,7 +53,7 @@ export default function ShippingDocuments({ orderId, carrier, trackingNumber, tr
       {isSeller && carrier && carrier !== "dao" && (
         <button type="button" disabled={loading} onClick={downloadDocument}
           className="rounded-full bg-[#063f32] px-4 py-2 font-semibold text-white disabled:opacity-50">
-          {loading ? "Henter fragtpapir..." : "Hent QR eller fragtlabel"}
+          {loading ? loadingLabel : downloadLabel}
         </button>
       )}
       {message && <p role="alert" className="w-full text-red-700">{message}</p>}
