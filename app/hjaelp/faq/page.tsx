@@ -38,7 +38,7 @@ const categories = [
   {
     title: "Fragt",
     items: [
-      { q: "Hvordan fungerer fragt?", a: <>Fragt bestilles sammen med købet. Fragtprisen afhænger af den pakkeklasse, sælger har valgt.</>},
+      { q: "Hvordan fungerer fragt?", a: <>Køber vælger fragtfirma i kurven. Prisen afhænger af fragtfirmaet og pakkens vægtklasse. Se <Link href="/priser" className="underline">priser og gebyrer</Link>.</>},
       { q: "Hvilke pakker kan sendes?", a: <>Equishopper tilbyder fragt på pakker op til 15 kg.</>},
       { q: "Hvad hvis pakken bliver væk?", a: <>Sagen behandles efter fragtpartnerens gældende regler og erstatningsvilkår.</>},
     ],
@@ -62,8 +62,8 @@ const categories = [
   {
     title: "Gebyrer",
     items: [
-      { q: "Hvad koster det at sælge?", a: <>Sælger betaler 2 % af salgsprisen.</>},
-      { q: "Hvad koster det at købe?", a: <>Køber betaler 3 % af vareprisen + 5 kr. i køberbeskyttelse. Hertil kommer eventuel fragt.</>},
+      { q: "Hvad koster det at sælge?", a: <>Standardgebyret for sælger er 2 % af salgsprisen.</>},
+      { q: "Hvad koster det at købe?", a: <>Køber betaler 3 % af vareprisen + 10 kr. i køberbeskyttelse. Hertil kommer eventuel fragt.</>},
     ],
   },
 ];

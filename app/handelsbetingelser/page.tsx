@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import Header from "@/components/home/Header";
 
 const sections = [
@@ -157,8 +159,15 @@ const sections = [
           </li>
         </ul>
         <p>
-          De aktuelle satser fremgår altid af Equishoppers prisside og vises
-          tydeligt for både køber og sælger, inden handlen gennemføres.
+          De aktuelle satser fremgår af{" "}
+          <Link
+            href="/priser"
+            className="font-semibold text-[#063f32] underline decoration-[#d4af37] underline-offset-4 transition hover:text-[#0b5a47]"
+          >
+            Priser og gebyrer
+          </Link>
+          {" "}og vises tydeligt for både køber og sælger, inden handlen
+          gennemføres.
         </p>
       </>
     ),
@@ -216,7 +225,10 @@ const sections = [
       <>
         <p>Køber og sælger kan vælge mellem:</p>
         <ul>
-          <li>levering via Equishoppers godkendte fragtpartnere</li>
+          <li>
+            levering via DAO, GLS eller PostNord, afhængigt af de
+            fragtmuligheder, der vises i kurven
+          </li>
           <li>personlig afhentning efter indbyrdes aftale</li>
         </ul>
         <p>
@@ -224,18 +236,15 @@ const sections = [
           rådighed, når de er tilgængelige.
         </p>
         <p>
-          Ved levering via DAO gælder DAO&apos;s til enhver tid gældende vilkår,
-          leveringsbetingelser, operationelle praksis samt erstatningsregler
-          for transporten. Eventuelle ændringer hos DAO finder automatisk
-          anvendelse for forsendelser, der gennemføres via DAO.
+          For selve transporten gælder leveringsvilkårene og
+          erstatningsreglerne for det valgte fragtfirma og fragtprodukt.
         </p>
         <p>
           Eventuelle krav vedrørende transportskader, bortkomst eller
-          forsinkelse behandles i overensstemmelse med DAO&apos;s til enhver tid
-          gældende vilkår og erstatningsregler. Equishopper bistår parterne
-          med sagsbehandlingen, men påtager sig ikke et videregående
-          transportansvar end det, der følger af DAO&apos;s gældende regler eller
-          ufravigelig lovgivning.
+          forsinkelse behandles efter de vilkår, der gælder for den konkrete
+          forsendelse. Equishopper bistår parterne med sagsbehandlingen, men
+          påtager sig ikke et videregående transportansvar end det, der
+          følger af forsendelsens vilkår eller ufravigelig lovgivning.
         </p>
         <p>
           Sælger er ansvarlig for at emballere varen forsvarligt og overholde
@@ -493,7 +502,7 @@ export default function HandelsbetingelserPage() {
             </p>
 
             <p className="mt-6 text-sm text-white/50">
-              Senest opdateret: 23. august 2026
+              Senest opdateret: 20. november 2026
             </p>
           </div>
         </section>

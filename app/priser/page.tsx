@@ -1,6 +1,93 @@
 import Link from "next/link";
 
 import Header from "@/components/home/Header";
+import { calculateBuyerProtectionOere, calculateShippingOere } from "@/lib/checkout-pricing";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+
+export const dynamic = "force-dynamic";
+
+const SHIPPING_CARRIERS = [
+  { id: "dao", group: "dao_shop", name: "DAO" },
+  { id: "gls", group: "gls_shop", name: "GLS" },
+  { id: "postnord", group: "postnord_shop", name: "PostNord" },
+];
+const SHIPPING_WEIGHTS = [1000, 5000, 10000, 15000];
+
+const kroner = new Intl.NumberFormat("da-DK", {
+  style: "currency",
+  currency: "DKK",
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+});
+const exampleItemPriceOere = 100_000;
+const exampleBuyerProtectionOere = calculateBuyerProtectionOere(exampleItemPriceOere);
+
+async function ShippingPrices() {
+  const { data, error } = await supabaseAdmin
+    .from("shipping_products")
+    .select("carrier, package_group, max_weight_grams, price_amount")
+    .in("carrier", SHIPPING_CARRIERS.map((carrier) => carrier.id))
+    .in("max_weight_grams", SHIPPING_WEIGHTS)
+    .eq("active", true)
+    .eq("outbound_enabled", true)
+    .ilike("currency", "dkk")
+    .gt("price_amount", 0);
+
+  if (error) {
+    console.error("Fragtpriserne på prissiden kunne ikke hentes:", error);
+    return <p>Du kan se den aktuelle fragtpris i kurven.</p>;
+  }
+
+  const rates = (data ?? []).filter((rate) =>
+    Number.isInteger(rate.price_amount) &&
+    SHIPPING_CARRIERS.some((carrier) =>
+      carrier.id === rate.carrier && carrier.group === rate.package_group,
+    ),
+  );
+  const weights = SHIPPING_WEIGHTS.filter((weight) =>
+    rates.some((rate) => rate.max_weight_grams === weight),
+  );
+
+  if (!weights.length) return <p>Du kan se den aktuelle fragtpris i kurven.</p>;
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-[#eadfcb]">
+      <table className="w-full border-collapse text-left text-sm">
+        <caption className="sr-only">Fragtpriser til pakkeshop</caption>
+        <thead className="bg-[#fbfaf7] text-[#063f32]">
+          <tr>
+            <th scope="col" className="px-3 py-3 sm:px-4">Vægtklasse</th>
+            {SHIPPING_CARRIERS.map((carrier) => (
+              <th key={carrier.id} scope="col" className="px-3 py-3 text-right sm:px-4">
+                {carrier.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weights.map((weight) => (
+            <tr key={weight} className="border-t border-[#eadfcb]">
+              <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium sm:px-4">
+                Op til {weight / 1000} kg
+              </th>
+              {SHIPPING_CARRIERS.map((carrier) => {
+                const rate = rates.find((entry) =>
+                  entry.carrier === carrier.id && entry.max_weight_grams === weight,
+                );
+
+                return (
+                  <td key={carrier.id} className="whitespace-nowrap px-3 py-3 text-right sm:px-4">
+                    {rate ? kroner.format(calculateShippingOere(rate.price_amount) / 100) : "–"}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const sections = [
   {
@@ -23,7 +110,7 @@ const sections = [
     content: (
       <>
         <p>
-          Når du sælger en vare gennem Equishopper, betaler du{" "}
+          Standardgebyret, når du sælger en vare gennem Equishopper, er{" "}
           <span className="font-semibold text-[#063f32]">
             2 % af salgsprisen
           </span>
@@ -41,7 +128,7 @@ const sections = [
         <p>
           Når du køber en vare gennem Equishopper, betaler du{" "}
           <span className="font-semibold text-[#063f32]">
-            3 % af vareprisen + 5 kr.
+            3 % af vareprisen + 10 kr.
           </span>
         </p>
         <p>
@@ -68,15 +155,13 @@ const sections = [
     content: (
       <>
         <p>
-          Ved forsendelse beregnes fragtprisen ud fra den DAO-pakkeklasse,
-          som sælger har valgt til varen.
+          Køberen vælger mellem DAO, GLS og PostNord. Fragtprisen til pakkeshop
+          afhænger af fragtfirmaet og pakkens vægtklasse.
         </p>
+        <ShippingPrices />
         <p>
-          Den aktuelle fragtpris og leveringsmetode vises altid tydeligt,
-          inden betalingen gennemføres.
-        </p>
-        <p>
-          Fragt via Equishopper er ikke muligt for pakker over 15 kg.
+          Du ser den samlede pris for din ordre, inklusive fragt,
+          inden du betaler. Pakker op til 15 kg kan sendes via Equishopper.
         </p>
       </>
     ),
@@ -102,13 +187,13 @@ const sections = [
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#eadfcb] px-4 py-3">
-            <span>Køberbeskyttelse (3 % + 5 kr.)</span>
-            <span>35 kr.</span>
+            <span>Køberbeskyttelse (3 % + 10 kr.)</span>
+            <span>{kroner.format(exampleBuyerProtectionOere / 100)}</span>
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-4 bg-[#fbfaf7] px-4 py-3 font-semibold text-[#063f32]">
             <span>Køber betaler i alt</span>
-            <span>1.035 kr.</span>
+            <span>{kroner.format((exampleItemPriceOere + exampleBuyerProtectionOere) / 100)}</span>
           </div>
         </div>
 
@@ -128,7 +213,7 @@ const sections = [
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#eadfcb] px-4 py-3">
-            <span>Gebyr ved salg (2 %)</span>
+            <span>Standardgebyr ved salg (2 %)</span>
             <span>20 kr.</span>
           </div>
 
@@ -206,7 +291,7 @@ export default function PriserPage() {
             </p>
 
             <p className="mt-6 text-sm text-white/50">
-              Senest opdateret: 7. august 2026
+              Senest opdateret: 20. november 2026
             </p>
           </div>
         </section>
