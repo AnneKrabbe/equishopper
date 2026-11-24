@@ -21,6 +21,7 @@ type SearchHit = {
 };
 type SearchResponse = { fund?: SearchHit[] };
 type HouseNumber = {
+  id_lokalid?: string;
   vejnavn?: string;
   husnummertekst?: string;
   postnummer?: { postnr?: string; navn?: string };
@@ -54,6 +55,7 @@ type Suggestion = {
   longitude: number | null;
   floor?: string | null;
   door?: string | null;
+  houseId?: string | null;
 };
 
 async function getJson<T>(url: string): Promise<T> {
@@ -138,6 +140,7 @@ async function expandHit(hit: SearchHit): Promise<Suggestion | null> {
       city: house.postnummer?.navn ?? null,
       floor: details.adresse?.etagebetegnelse ?? null,
       door: details.adresse?.doerbetegnelse ?? null,
+      houseId: house.id_lokalid ?? (type === "husnummer" ? hit.id : null),
       ...coordinates,
     };
   } catch (error) {
@@ -155,6 +158,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Ugyldigt husnummer-id." }, { status: 400 });
     }
     try {
+      const houseIdFromPath = houseId;
       const data = await getJson<UnitResponse>(
         `${BASE_URL}/husnumre/${houseId}/adresser?token=${TOKEN}`
       );
@@ -163,6 +167,8 @@ export async function GET(request: NextRequest) {
           if (!item.id_lokalid || !UUID.test(item.id_lokalid)) return null;
           const house = item.husnummer;
           if (!house) return null;
+          const houseId = house.id_lokalid ?? houseIdFromPath;
+
 
           const street = [house.vejnavn, house.husnummertekst]
             .filter(Boolean).join(" ");
@@ -190,6 +196,7 @@ export async function GET(request: NextRequest) {
             longitude: coordinates.longitude,
             floor,
             door,
+            houseId,
           };
         })
         .filter((unit): unit is Suggestion => unit !== null)
