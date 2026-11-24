@@ -50,24 +50,18 @@ type ProfileData = {
   created_at: string | null;
 };
 
-type DawaAddress = {
-  id?: string;
-  tekst?: string;
-  adresse?: {
-    id?: string;
-    vejnavn?: string;
-    husnr?: string;
-    etage?: string | null;
-    dør?: string | null;
-    postnr?: string;
-    postnrnavn?: string;
-    x?: number;
-    y?: number;
-  };
-  x?: number;
-  y?: number;
-  postnr?: string;
-  postnrnavn?: string;
+type AddressSuggestion = {
+  kind: "street" | "house" | "address";
+  id: string;
+  text: string;
+  address: string;
+  postalCode: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  houseId?: string | null;
+  floor?: string | null;
+  door?: string | null;
 };
 
 type NotificationType =
@@ -99,6 +93,8 @@ const initialForm: ProfileForm = {
 export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const unitRequestRef = useRef(0);
 
   const [payoutSetupRequested, setPayoutSetupRequested] = useState(false);
   const [payoutOrderId, setPayoutOrderId] = useState<string | null>(null);
@@ -121,9 +117,16 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [locationFound, setLocationFound] = useState(false);
-  const [addressSuggestions, setAddressSuggestions] = useState<DawaAddress[]>([]);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressSearchUnavailable, setAddressSearchUnavailable] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [unitChoices, setUnitChoices] = useState<AddressSuggestion[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
 
   const [notifications, setNotifications] = useState<ProfileNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
@@ -379,94 +382,135 @@ export default function ProfilePage() {
     field: K,
     value: ProfileForm[K]
   ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-
+    setForm((current) => ({ ...current, [field]: value }));
     setSuccessMessage("");
+    setErrorMessage("");
 
-    if (
-      field === "address" ||
-      field === "postalCode" ||
-      field === "city"
-    ) {
+    if (field === "address" || field === "postalCode" || field === "city") {
+      // Ved adresseændring må gamle koordinater aldrig genbruges.
+      unitRequestRef.current += 1;
+      setUnitChoices([]);
+      setUnitsLoading(false);
+      setSelectedLocation(null);
       setLocationFound(false);
+      setAddressSuggestions([]);
     }
   }
 
   useEffect(() => {
     const query = form.address.trim();
-
-    if (!showAddressSuggestions || query.length < 3) {
+    if (!showAddressSuggestions || query.length < 2) {
       setAddressSuggestions([]);
       setAddressSuggestionsLoading(false);
+      setAddressSearchUnavailable(false);
       return;
     }
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
+      setAddressSuggestionsLoading(true);
+      setAddressSearchUnavailable(false);
+
       try {
-        setAddressSuggestionsLoading(true);
+        const params = new URLSearchParams({ q: query });
+        if (/^\d{4}$/.test(form.postalCode.trim())) {
+          params.set("postalCode", form.postalCode.trim());
+        }
 
         const response = await fetch(
-          `https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(
-            query
-          )}&type=adresse&caretpos=${query.length}&fuzzy=`,
-          { signal: controller.signal }
+          "/api/address-search?" + params.toString(),
+          { signal: controller.signal, cache: "no-store" }
         );
-
         if (!response.ok) {
-          throw new Error("Adresseforslag kunne ikke hentes.");
+          throw new Error("Adresseopslaget er midlertidigt utilgængeligt.");
         }
 
-        const results = (await response.json()) as DawaAddress[];
-        setAddressSuggestions(results.slice(0, 6));
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-
-        console.error("Kunne ikke hente adresseforslag:", error);
-        setAddressSuggestions([]);
-      } finally {
+        const payload = (await response.json()) as {
+          suggestions?: AddressSuggestion[];
+        };
         if (!controller.signal.aborted) {
-          setAddressSuggestionsLoading(false);
+          setAddressSuggestions((payload.suggestions ?? []).slice(0, 8));
         }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("Adresseforslag kunne ikke hentes:", error);
+        setAddressSuggestions([]);
+        setAddressSearchUnavailable(true);
+      } finally {
+        if (!controller.signal.aborted) setAddressSuggestionsLoading(false);
       }
-    }, 250);
+    }, 300);
 
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [form.address, showAddressSuggestions]);
+  }, [form.address, form.postalCode, showAddressSuggestions]);
 
-  function selectAddressSuggestion(suggestion: DawaAddress) {
-    const address = suggestion.adresse;
-    if (!address) return;
-
-    const streetAddress = [
-      [address.vejnavn, address.husnr].filter(Boolean).join(" "),
-      address.etage || "",
-      address.dør || "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-
+  function applyAddressSuggestion(suggestion: AddressSuggestion) {
+    const isStreet = suggestion.kind === "street";
     setForm((current) => ({
       ...current,
-      address: streetAddress || suggestion.tekst || current.address,
-      postalCode: address.postnr ?? current.postalCode,
-      city: address.postnrnavn ?? current.city,
+      address: isStreet ? suggestion.address + " " : suggestion.address,
+      postalCode: suggestion.postalCode ?? current.postalCode,
+      city: suggestion.city ?? current.city,
     }));
-
-    setLocationFound(
-      typeof address.y === "number" && typeof address.x === "number"
-    );
+    const hasCoordinates =
+      typeof suggestion.latitude === "number" &&
+      Number.isFinite(suggestion.latitude) &&
+      typeof suggestion.longitude === "number" &&
+      Number.isFinite(suggestion.longitude);
+    setSelectedLocation(hasCoordinates ? {
+      latitude: suggestion.latitude as number,
+      longitude: suggestion.longitude as number,
+    } : null);
+    setLocationFound(hasCoordinates);
     setAddressSuggestions([]);
-    setShowAddressSuggestions(false);
+    setShowAddressSuggestions(isStreet);
+    if (isStreet) addressInputRef.current?.focus();
     setSuccessMessage("");
+    setErrorMessage("");
+  }
+
+  async function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    const requestId = ++unitRequestRef.current;
+    setUnitChoices([]);
+    setUnitsLoading(false);
+    applyAddressSuggestion(suggestion);
+    const needsUnitChoice =
+      suggestion.kind === "house" ||
+      (Boolean(suggestion.houseId) && !suggestion.floor && !suggestion.door);
+    if (!needsUnitChoice) return;
+
+    setUnitsLoading(true);
+    try {
+      const response = await fetch(
+        `/api/address-search?houseId=${encodeURIComponent(suggestion.houseId ?? suggestion.id)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Etageopslag mislykkedes");
+      const payload = (await response.json()) as { units?: AddressSuggestion[] };
+      if (unitRequestRef.current !== requestId) return;
+      const units = payload.units ?? [];
+      if (units.length === 1) {
+        applyAddressSuggestion(units[0]);
+      } else if (units.length > 1) {
+        setUnitChoices(units);
+      }
+    } catch (error) {
+      if (unitRequestRef.current === requestId) {
+        console.warn("Etager/døre kunne ikke hentes:", error);
+        setErrorMessage("Etage og dør kunne ikke hentes. Du kan skrive dem manuelt efter husnummeret.");
+      }
+    } finally {
+      if (unitRequestRef.current === requestId) setUnitsLoading(false);
+    }
+  }
+
+  function chooseUnit(unit: AddressSuggestion) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    applyAddressSuggestion(unit);
   }
 
   function handleAvatarSelection(
@@ -564,55 +608,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function findCoordinates() {
-    const address = form.address.trim();
-    const postalCode = form.postalCode.trim();
-    const city = form.city.trim();
-
-    if (!address || !postalCode || !city) {
-      throw new Error(
-        "Adresse, postnummer og by skal være udfyldt."
-      );
-    }
-
-    const searchText =
-      `${address}, ${postalCode} ${city}`;
-
-    const response = await fetch(
-      `https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(
-        searchText
-      )}&struktur=mini&per_side=1`
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        "Adresseopslaget kunne ikke gennemføres."
-      );
-    }
-
-    const results =
-      (await response.json()) as DawaAddress[];
-
-    const match = results[0];
-
-    if (
-      !match ||
-      typeof match.x !== "number" ||
-      typeof match.y !== "number"
-    ) {
-      throw new Error(
-        "Adressen blev ikke fundet. Kontrollér adresse, postnummer og by."
-      );
-    }
-
-    return {
-      latitude: match.y,
-      longitude: match.x,
-      postalCode: match.postnr ?? postalCode,
-      city: match.postnrnavn ?? city,
-    };
-  }
-
   async function handleSave(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -661,26 +656,30 @@ export default function ProfilePage() {
         );
       }
 
-      let location: {
-        latitude: number | null;
-        longitude: number | null;
-        postalCode: string;
-        city: string;
-      } = {
-        latitude: profile?.latitude ?? null,
-        longitude: profile?.longitude ?? null,
+      if (!form.address.trim() || !form.city.trim()) {
+        throw new Error("Adresse og by skal være udfyldt.");
+      }
+
+      const addressChanged =
+        form.address.trim() !== (profile?.address ?? "").trim() ||
+        form.postalCode.trim() !== (profile?.postal_code ?? "").trim() ||
+        form.city.trim() !== (profile?.city ?? "").trim();
+
+      // En uændret adresse beholder eksisterende koordinater.
+      // Ny adresse uden valgt officielt adresseforslag gemmes uden koordinater.
+      const preserveCoordinates =
+        !addressChanged &&
+        typeof profile?.latitude === "number" &&
+        typeof profile?.longitude === "number";
+
+      const location = {
+        latitude: selectedLocation?.latitude ??
+          (preserveCoordinates ? profile!.latitude : null),
+        longitude: selectedLocation?.longitude ??
+          (preserveCoordinates ? profile!.longitude : null),
         postalCode: form.postalCode.trim(),
         city: form.city.trim(),
       };
-
-      try {
-        location = await findCoordinates();
-      } catch (locationError) {
-        console.warn(
-          "Adressen kunne ikke geokodes, men profilen gemmes stadig:",
-          locationError
-        );
-      }
 
       const newAvatarUrl = await uploadAvatar();
 
@@ -1133,6 +1132,7 @@ export default function ProfilePage() {
                         <input
                           required
                           type="text"
+                          ref={addressInputRef}
                           autoComplete="off"
                           value={form.address}
                           onFocus={() => setShowAddressSuggestions(true)}
@@ -1153,52 +1153,68 @@ export default function ProfilePage() {
                         />
 
                         {showAddressSuggestions &&
-                          form.address.trim().length >= 3 && (
-                            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                          form.address.trim().length >= 2 && (
+                            <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-xl">
                               {addressSuggestionsLoading ? (
                                 <div className="px-4 py-3 text-sm text-stone-500">
                                   Henter adresseforslag...
                                 </div>
                               ) : addressSuggestions.length > 0 ? (
                                 <div role="listbox">
-                                  {addressSuggestions.map(
-                                    (suggestion, index) => (
-                                      <button
-                                        key={
-                                          suggestion.id ??
-                                          suggestion.adresse?.id ??
-                                          `${suggestion.tekst}-${index}`
-                                        }
-                                        type="button"
-                                        role="option"
-                                        onMouseDown={(event) =>
-                                          event.preventDefault()
-                                        }
-                                        onClick={() =>
-                                          selectAddressSuggestion(suggestion)
-                                        }
-                                        className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
-                                      >
-                                        {suggestion.tekst ??
-                                          [
-                                            suggestion.adresse?.vejnavn,
-                                            suggestion.adresse?.husnr,
-                                            suggestion.adresse?.postnr,
-                                            suggestion.adresse?.postnrnavn,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" ")}
-                                      </button>
-                                    )
-                                  )}
+                                  {addressSuggestions.map((suggestion) => (
+                                    <button
+                                      key={suggestion.id}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={false}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => selectAddressSuggestion(suggestion)}
+                                      className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
+                                    >
+                                      {suggestion.text}
+                                      {suggestion.kind === "street" && (
+                                        <span className="block text-xs text-stone-500">Vælg vej, og skriv derefter husnummer</span>
+                                      )}
+                                    </button>
+                                  ))}
                                 </div>
                               ) : (
                                 <div className="px-4 py-3 text-sm text-stone-500">
-                                  Ingen adresser fundet.
+                                  {addressSearchUnavailable
+                                    ? "Adresseopslaget er midlertidigt utilgængeligt. Du kan stadig gemme adressen."
+                                    : "Ingen adresser fundet. Prøv at tilføje husnummer og postnummer."}
                                 </div>
                               )}
                             </div>
                           )}
+                        {unitsLoading && (
+                          <p className="mt-2 text-sm text-stone-500">Henter etage og dør...</p>
+                        )}
+                        {unitChoices.length > 1 && (
+                          <div className="relative z-40 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-lg">
+                            <p className="px-4 py-2 text-sm font-semibold text-[#063f32]">Vælg din etage og dør</p>
+                            {unitChoices.map((unit) => (
+                              <button
+                                key={unit.id}
+                                type="button"
+                                onClick={() => chooseUnit(unit)}
+                                className="block w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] hover:bg-[#f0f6f1]"
+                              >
+                                {unit.text}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              className="w-full border-t border-stone-100 px-4 py-3 text-left text-xs text-stone-600 hover:bg-stone-50"
+                              onClick={() => {
+                                setUnitChoices([]);
+                                addressInputRef.current?.focus();
+                              }}
+                            >
+                              Min etage/dør mangler – jeg skriver den selv
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </FormField>
 
@@ -1272,13 +1288,13 @@ export default function ProfilePage() {
                       >
                         {locationFound
                           ? "Lokation fundet"
-                          : "Lokation opdateres ved gem"}
+                          : "Lokation ikke bekræftet"}
                       </p>
 
                       <p className="mt-1 text-sm leading-6 text-stone-600">
                         {locationFound
                           ? "Din lokation kan nu bruges til at vise relevante annoncer i nærheden."
-                          : "Når du gemmer, kontrollerer vi adressen og finder dens koordinater."}
+                          : "Vælg adressen fra forslagene for at gemme dens korrekte placering. Skriver du manuelt, gemmes adressen uden koordinater."}
                       </p>
                     </div>
                   </div>

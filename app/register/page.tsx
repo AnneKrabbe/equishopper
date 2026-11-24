@@ -57,6 +57,7 @@ type RegisterForm = {
 
 
 type AddressSuggestion = {
+  kind: "street" | "house" | "address";
   id: string;
   text: string;
   address: string;
@@ -64,6 +65,9 @@ type AddressSuggestion = {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  houseId?: string | null;
+  floor?: string | null;
+  door?: string | null;
 };
 
 type SelectedLocation = {
@@ -104,6 +108,8 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const unitRequestRef = useRef(0);
 
   const [form, setForm] = useState<RegisterForm>(initialForm);
 
@@ -120,6 +126,8 @@ export default function RegisterPage() {
   const [addressSearchUnavailable, setAddressSearchUnavailable] = useState(false);
   const [addressMenuOpen, setAddressMenuOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const [unitChoices, setUnitChoices] = useState<AddressSuggestion[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
 
 
 
@@ -196,7 +204,7 @@ export default function RegisterPage() {
   useEffect(() => {
     const query = form.address.trim();
 
-    if (query.length < 3 || selectedLocation) {
+    if (query.length < 2 || selectedLocation) {
       setAddressSuggestions([]);
       setAddressSearchLoading(false);
       setAddressSearchUnavailable(false);
@@ -250,6 +258,9 @@ export default function RegisterPage() {
   }, [form.address, form.postalCode, selectedLocation]);
 
   function handleAddressChange(value: string) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    setUnitsLoading(false);
     setForm((current) => ({ ...current, address: value }));
     setSelectedLocation(null);
     setAddressMenuOpen(true);
@@ -257,6 +268,9 @@ export default function RegisterPage() {
   }
 
   function handlePostalCodeChange(value: string) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    setUnitsLoading(false);
     setForm((current) => ({
       ...current,
       postalCode: value.replace(/\D/g, "").slice(0, 4),
@@ -266,19 +280,22 @@ export default function RegisterPage() {
   }
 
   function handleCityChange(value: string) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    setUnitsLoading(false);
     setForm((current) => ({ ...current, city: value }));
     setSelectedLocation(null);
     setErrorMessage("");
   }
 
-  function selectAddressSuggestion(suggestion: AddressSuggestion) {
+  function applyAddressSuggestion(suggestion: AddressSuggestion) {
+    const isStreet = suggestion.kind === "street";
     setForm((current) => ({
       ...current,
-      address: suggestion.address,
+      address: isStreet ? suggestion.address + " " : suggestion.address,
       postalCode: suggestion.postalCode ?? current.postalCode,
       city: suggestion.city ?? current.city,
     }));
-
     if (
       typeof suggestion.latitude === "number" &&
       typeof suggestion.longitude === "number"
@@ -290,11 +307,51 @@ export default function RegisterPage() {
     } else {
       setSelectedLocation(null);
     }
-
     setAddressSuggestions([]);
-    setAddressMenuOpen(false);
+    setAddressMenuOpen(isStreet);
+    if (isStreet) addressInputRef.current?.focus();
     setAddressSearchUnavailable(false);
     setErrorMessage("");
+  }
+
+  async function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    const requestId = ++unitRequestRef.current;
+    setUnitChoices([]);
+    setUnitsLoading(false);
+    applyAddressSuggestion(suggestion);
+    const needsUnitChoice =
+      suggestion.kind === "house" ||
+      (Boolean(suggestion.houseId) && !suggestion.floor && !suggestion.door);
+    if (!needsUnitChoice) return;
+    setUnitsLoading(true);
+    try {
+      const response = await fetch(
+        `/api/address-search?houseId=${encodeURIComponent(suggestion.houseId ?? suggestion.id)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Etageopslag mislykkedes");
+      const payload = (await response.json()) as { units?: AddressSuggestion[] };
+      if (unitRequestRef.current !== requestId) return;
+      const units = payload.units ?? [];
+      if (units.length === 1) {
+        applyAddressSuggestion(units[0]);
+      } else if (units.length > 1) {
+        setUnitChoices(units);
+      }
+    } catch (error) {
+      if (unitRequestRef.current === requestId) {
+        console.warn("Etager/døre kunne ikke hentes:", error);
+        setErrorMessage("Etage og dør kunne ikke hentes. Du kan skrive dem manuelt efter husnummeret.");
+      }
+    } finally {
+      if (unitRequestRef.current === requestId) setUnitsLoading(false);
+    }
+  }
+
+  function chooseUnit(unit: AddressSuggestion) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    applyAddressSuggestion(unit);
   }
 
   async function uploadAvatar(userId: string) {
@@ -1082,6 +1139,7 @@ if (
                     <input
                       required
                       type="text"
+                      ref={addressInputRef}
                       autoComplete="off"
                       value={form.address}
                       onChange={(event) => handleAddressChange(event.target.value)}
@@ -1123,8 +1181,39 @@ if (
                             className="block w-full rounded-xl px-4 py-3 text-left text-sm text-stone-700 transition hover:bg-[#edf4ef]"
                           >
                             <span className="block">{suggestion.text}</span>
+                            {suggestion.kind === "street" && (
+                              <span className="block text-xs text-stone-500">Vælg vej, og skriv derefter husnummer</span>
+                            )}
                           </button>
                         ))}
+                      </div>
+                    )}
+                    {unitsLoading && (
+                      <p className="mt-2 text-sm text-stone-500">Henter etage og dør...</p>
+                    )}
+                    {unitChoices.length > 1 && (
+                      <div className="relative z-40 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-lg">
+                        <p className="px-4 py-2 text-sm font-semibold text-[#063f32]">Vælg din etage og dør</p>
+                        {unitChoices.map((unit) => (
+                          <button
+                            key={unit.id}
+                            type="button"
+                            onClick={() => chooseUnit(unit)}
+                            className="block w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] hover:bg-[#f0f6f1]"
+                          >
+                            {unit.text}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="w-full border-t border-stone-100 px-4 py-3 text-left text-xs text-stone-600 hover:bg-stone-50"
+                          onClick={() => {
+                            setUnitChoices([]);
+                            addressInputRef.current?.focus();
+                          }}
+                        >
+                          Min etage/dør mangler – jeg skriver den selv
+                        </button>
                       </div>
                     )}
                   </div>
