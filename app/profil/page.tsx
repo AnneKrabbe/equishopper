@@ -50,24 +50,14 @@ type ProfileData = {
   created_at: string | null;
 };
 
-type DawaAddress = {
-  id?: string;
-  tekst?: string;
-  adresse?: {
-    id?: string;
-    vejnavn?: string;
-    husnr?: string;
-    etage?: string | null;
-    dør?: string | null;
-    postnr?: string;
-    postnrnavn?: string;
-    x?: number;
-    y?: number;
-  };
-  x?: number;
-  y?: number;
-  postnr?: string;
-  postnrnavn?: string;
+type AddressSuggestion = {
+  id: string;
+  text: string;
+  address: string;
+  postalCode: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type NotificationType =
@@ -121,7 +111,12 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [locationFound, setLocationFound] = useState(false);
-  const [addressSuggestions, setAddressSuggestions] = useState<DawaAddress[]>([]);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressSearchUnavailable, setAddressSearchUnavailable] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
 
@@ -379,94 +374,92 @@ export default function ProfilePage() {
     field: K,
     value: ProfileForm[K]
   ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-
+    setForm((current) => ({ ...current, [field]: value }));
     setSuccessMessage("");
+    setErrorMessage("");
 
-    if (
-      field === "address" ||
-      field === "postalCode" ||
-      field === "city"
-    ) {
+    if (field === "address" || field === "postalCode" || field === "city") {
+      // Ved adresseændring må gamle koordinater aldrig genbruges.
+      setSelectedLocation(null);
       setLocationFound(false);
+      setAddressSuggestions([]);
     }
   }
 
   useEffect(() => {
     const query = form.address.trim();
-
     if (!showAddressSuggestions || query.length < 3) {
       setAddressSuggestions([]);
       setAddressSuggestionsLoading(false);
+      setAddressSearchUnavailable(false);
       return;
     }
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
+      setAddressSuggestionsLoading(true);
+      setAddressSearchUnavailable(false);
+
       try {
-        setAddressSuggestionsLoading(true);
+        const params = new URLSearchParams({ q: query });
+        if (/^\d{4}$/.test(form.postalCode.trim())) {
+          params.set("postalCode", form.postalCode.trim());
+        }
 
         const response = await fetch(
-          `https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(
-            query
-          )}&type=adresse&caretpos=${query.length}&fuzzy=`,
-          { signal: controller.signal }
+          "/api/address-search?" + params.toString(),
+          { signal: controller.signal, cache: "no-store" }
         );
-
         if (!response.ok) {
-          throw new Error("Adresseforslag kunne ikke hentes.");
+          throw new Error("Adresseopslaget er midlertidigt utilgængeligt.");
         }
 
-        const results = (await response.json()) as DawaAddress[];
-        setAddressSuggestions(results.slice(0, 6));
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-
-        console.error("Kunne ikke hente adresseforslag:", error);
-        setAddressSuggestions([]);
-      } finally {
+        const payload = (await response.json()) as {
+          suggestions?: AddressSuggestion[];
+        };
         if (!controller.signal.aborted) {
-          setAddressSuggestionsLoading(false);
+          setAddressSuggestions((payload.suggestions ?? []).slice(0, 8));
         }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("Adresseforslag kunne ikke hentes:", error);
+        setAddressSuggestions([]);
+        setAddressSearchUnavailable(true);
+      } finally {
+        if (!controller.signal.aborted) setAddressSuggestionsLoading(false);
       }
-    }, 250);
+    }, 300);
 
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [form.address, showAddressSuggestions]);
+  }, [form.address, form.postalCode, showAddressSuggestions]);
 
-  function selectAddressSuggestion(suggestion: DawaAddress) {
-    const address = suggestion.adresse;
-    if (!address) return;
-
-    const streetAddress = [
-      [address.vejnavn, address.husnr].filter(Boolean).join(" "),
-      address.etage || "",
-      address.dør || "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-
+  function selectAddressSuggestion(suggestion: AddressSuggestion) {
     setForm((current) => ({
       ...current,
-      address: streetAddress || suggestion.tekst || current.address,
-      postalCode: address.postnr ?? current.postalCode,
-      city: address.postnrnavn ?? current.city,
+      address: suggestion.address,
+      postalCode: suggestion.postalCode ?? current.postalCode,
+      city: suggestion.city ?? current.city,
     }));
 
-    setLocationFound(
-      typeof address.y === "number" && typeof address.x === "number"
-    );
+    const hasCoordinates =
+      typeof suggestion.latitude === "number" &&
+      Number.isFinite(suggestion.latitude) &&
+      typeof suggestion.longitude === "number" &&
+      Number.isFinite(suggestion.longitude);
+
+    setSelectedLocation(hasCoordinates ? {
+      latitude: suggestion.latitude as number,
+      longitude: suggestion.longitude as number,
+    } : null);
+    setLocationFound(hasCoordinates);
     setAddressSuggestions([]);
+    setAddressSearchUnavailable(false);
     setShowAddressSuggestions(false);
     setSuccessMessage("");
+    setErrorMessage("");
   }
 
   function handleAvatarSelection(
@@ -564,55 +557,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function findCoordinates() {
-    const address = form.address.trim();
-    const postalCode = form.postalCode.trim();
-    const city = form.city.trim();
-
-    if (!address || !postalCode || !city) {
-      throw new Error(
-        "Adresse, postnummer og by skal være udfyldt."
-      );
-    }
-
-    const searchText =
-      `${address}, ${postalCode} ${city}`;
-
-    const response = await fetch(
-      `https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(
-        searchText
-      )}&struktur=mini&per_side=1`
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        "Adresseopslaget kunne ikke gennemføres."
-      );
-    }
-
-    const results =
-      (await response.json()) as DawaAddress[];
-
-    const match = results[0];
-
-    if (
-      !match ||
-      typeof match.x !== "number" ||
-      typeof match.y !== "number"
-    ) {
-      throw new Error(
-        "Adressen blev ikke fundet. Kontrollér adresse, postnummer og by."
-      );
-    }
-
-    return {
-      latitude: match.y,
-      longitude: match.x,
-      postalCode: match.postnr ?? postalCode,
-      city: match.postnrnavn ?? city,
-    };
-  }
-
   async function handleSave(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -661,26 +605,30 @@ export default function ProfilePage() {
         );
       }
 
-      let location: {
-        latitude: number | null;
-        longitude: number | null;
-        postalCode: string;
-        city: string;
-      } = {
-        latitude: profile?.latitude ?? null,
-        longitude: profile?.longitude ?? null,
+      if (!form.address.trim() || !form.city.trim()) {
+        throw new Error("Adresse og by skal være udfyldt.");
+      }
+
+      const addressChanged =
+        form.address.trim() !== (profile?.address ?? "").trim() ||
+        form.postalCode.trim() !== (profile?.postal_code ?? "").trim() ||
+        form.city.trim() !== (profile?.city ?? "").trim();
+
+      // En uændret adresse beholder eksisterende koordinater.
+      // Ny adresse uden valgt officielt adresseforslag gemmes uden koordinater.
+      const preserveCoordinates =
+        !addressChanged &&
+        typeof profile?.latitude === "number" &&
+        typeof profile?.longitude === "number";
+
+      const location = {
+        latitude: selectedLocation?.latitude ??
+          (preserveCoordinates ? profile!.latitude : null),
+        longitude: selectedLocation?.longitude ??
+          (preserveCoordinates ? profile!.longitude : null),
         postalCode: form.postalCode.trim(),
         city: form.city.trim(),
       };
-
-      try {
-        location = await findCoordinates();
-      } catch (locationError) {
-        console.warn(
-          "Adressen kunne ikke geokodes, men profilen gemmes stadig:",
-          locationError
-        );
-      }
 
       const newAvatarUrl = await uploadAvatar();
 
@@ -1161,40 +1109,25 @@ export default function ProfilePage() {
                                 </div>
                               ) : addressSuggestions.length > 0 ? (
                                 <div role="listbox">
-                                  {addressSuggestions.map(
-                                    (suggestion, index) => (
-                                      <button
-                                        key={
-                                          suggestion.id ??
-                                          suggestion.adresse?.id ??
-                                          `${suggestion.tekst}-${index}`
-                                        }
-                                        type="button"
-                                        role="option"
-                                        onMouseDown={(event) =>
-                                          event.preventDefault()
-                                        }
-                                        onClick={() =>
-                                          selectAddressSuggestion(suggestion)
-                                        }
-                                        className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
-                                      >
-                                        {suggestion.tekst ??
-                                          [
-                                            suggestion.adresse?.vejnavn,
-                                            suggestion.adresse?.husnr,
-                                            suggestion.adresse?.postnr,
-                                            suggestion.adresse?.postnrnavn,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(" ")}
-                                      </button>
-                                    )
-                                  )}
+                                  {addressSuggestions.map((suggestion) => (
+                                    <button
+                                      key={suggestion.id}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={false}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => selectAddressSuggestion(suggestion)}
+                                      className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
+                                    >
+                                      {suggestion.text}
+                                    </button>
+                                  ))}
                                 </div>
                               ) : (
                                 <div className="px-4 py-3 text-sm text-stone-500">
-                                  Ingen adresser fundet.
+                                  {addressSearchUnavailable
+                                    ? "Adresseopslaget er midlertidigt utilgængeligt. Du kan stadig gemme adressen."
+                                    : "Ingen adresser fundet. Prøv at tilføje husnummer og postnummer."}
                                 </div>
                               )}
                             </div>
@@ -1272,13 +1205,13 @@ export default function ProfilePage() {
                       >
                         {locationFound
                           ? "Lokation fundet"
-                          : "Lokation opdateres ved gem"}
+                          : "Lokation ikke bekræftet"}
                       </p>
 
                       <p className="mt-1 text-sm leading-6 text-stone-600">
                         {locationFound
                           ? "Din lokation kan nu bruges til at vise relevante annoncer i nærheden."
-                          : "Når du gemmer, kontrollerer vi adressen og finder dens koordinater."}
+                          : "Vælg adressen fra forslagene for at gemme dens korrekte placering. Skriver du manuelt, gemmes adressen uden koordinater."}
                       </p>
                     </div>
                   </div>
