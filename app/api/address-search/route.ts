@@ -29,16 +29,22 @@ type HouseNumber = {
     geometri?: { coordinates?: number[] };
   };
 };
-type AddressDetails = {
-  adresse?: {
-    etagebetegnelse?: string | null;
-    doerbetegnelse?: string | null;
-    husnummer?: HouseNumber;
-  };
+type RegisteredAddress = {
+  id_lokalid?: string;
+  adressebetegnelse?: string;
+  etagebetegnelse?: string | null;
+  doerbetegnelse?: string | null;
   husnummer?: HouseNumber;
 };
+type AddressDetails = {
+  adresse?: RegisteredAddress;
+  husnummer?: HouseNumber;
+};
+type UnitResponse = {
+  adresser?: RegisteredAddress[];
+};
 type Suggestion = {
-  kind: "street" | "address";
+  kind: "street" | "house" | "address";
   id: string;
   text: string;
   address: string;
@@ -46,6 +52,8 @@ type Suggestion = {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  floor?: string | null;
+  door?: string | null;
 };
 
 async function getJson<T>(url: string): Promise<T> {
@@ -122,12 +130,14 @@ async function expandHit(hit: SearchHit): Promise<Suggestion | null> {
     if (!street || !postalCode || !/^\d{4}$/.test(postalCode)) return null;
 
     return {
-      kind: "address",
+      kind: type === "husnummer" ? "house" : "address",
       id: hit.id,
       text: hit.titel,
       address: unit ? `${street}, ${unit}` : street,
       postalCode,
       city: house.postnummer?.navn ?? null,
+      floor: details.adresse?.etagebetegnelse ?? null,
+      door: details.adresse?.doerbetegnelse ?? null,
       ...coordinates,
     };
   } catch (error) {
@@ -137,6 +147,67 @@ async function expandHit(hit: SearchHit): Promise<Suggestion | null> {
 }
 
 export async function GET(request: NextRequest) {
+  // Hent officielle lejligheder/etager på et valgt husnummer.
+  // Bruges først, når brugeren klikker på et husnummer.
+  const houseId = request.nextUrl.searchParams.get("houseId");
+  if (houseId !== null) {
+    if (!UUID.test(houseId)) {
+      return NextResponse.json({ error: "Ugyldigt husnummer-id." }, { status: 400 });
+    }
+    try {
+      const data = await getJson<UnitResponse>(
+        `${BASE_URL}/husnumre/${houseId}/adresser?token=${TOKEN}`
+      );
+      const units = (Array.isArray(data.adresser) ? data.adresser : [])
+        .map((item): Suggestion | null => {
+          if (!item.id_lokalid || !UUID.test(item.id_lokalid)) return null;
+          const house = item.husnummer;
+          if (!house) return null;
+
+          const street = [house.vejnavn, house.husnummertekst]
+            .filter(Boolean).join(" ");
+          const postnr = house.postnummer?.postnr ?? null;
+          if (!street || !postnr) return null;
+          const floor = item.etagebetegnelse ?? null;
+          const door = item.doerbetegnelse ?? null;
+          const unit = [floor ? `${floor}.` : "", door ?? ""]
+            .filter(Boolean).join(" ");
+          const x = house.adgangspunkt?.koordinater?.x ??
+            house.adgangspunkt?.geometri?.coordinates?.[0];
+          const y = house.adgangspunkt?.koordinater?.y ??
+            house.adgangspunkt?.geometri?.coordinates?.[1];
+          const coordinates = typeof x === "number" && typeof y === "number"
+            ? toWgs84(x, y)
+            : { latitude: null, longitude: null };
+          return {
+            kind: "address",
+            id: item.id_lokalid,
+            text: item.adressebetegnelse ?? `${street}${unit ? ", " + unit : ""}, ${postnr}`,
+            address: unit ? `${street}, ${unit}` : street,
+            postalCode: postnr,
+            city: house.postnummer?.navn ?? null,
+            latitude: coordinates.latitude,
+            longitude: coordinates.longitude,
+            floor,
+            door,
+          };
+        })
+        .filter((unit): unit is Suggestion => unit !== null)
+        .sort((a, b) =>
+          (a.floor ?? "").localeCompare(b.floor ?? "", "da", { numeric: true }) ||
+          (a.door ?? "").localeCompare(b.door ?? "", "da", { numeric: true })
+        );
+      return NextResponse.json({ units }, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    } catch (error) {
+      console.error("Kunne ikke hente etager og døre:", error);
+      return NextResponse.json(
+        { error: "Etager og døre kunne ikke hentes." }, { status: 503 }
+      );
+    }
+  }
+
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const postalCode = request.nextUrl.searchParams.get("postalCode")?.trim() ?? "";
   if (query.length < 2) return NextResponse.json({ suggestions: [] });
@@ -149,7 +220,7 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     tekst: query,
     token: TOKEN,
-    max: "50",
+    maksimum: "50",
   });
   if (/^\d{4}$/.test(postalCode)) params.set("postnummer", postalCode);
 
