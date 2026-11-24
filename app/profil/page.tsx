@@ -51,7 +51,7 @@ type ProfileData = {
 };
 
 type AddressSuggestion = {
-  kind: "street" | "address";
+  kind: "street" | "house" | "address";
   id: string;
   text: string;
   address: string;
@@ -91,6 +91,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const unitRequestRef = useRef(0);
 
   const [payoutSetupRequested, setPayoutSetupRequested] = useState(false);
   const [payoutOrderId, setPayoutOrderId] = useState<string | null>(null);
@@ -121,6 +122,8 @@ export default function ProfilePage() {
   } | null>(null);
   const [addressSuggestionsLoading, setAddressSuggestionsLoading] = useState(false);
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [unitChoices, setUnitChoices] = useState<AddressSuggestion[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
 
   const [notifications, setNotifications] = useState<ProfileNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
@@ -382,6 +385,9 @@ export default function ProfilePage() {
 
     if (field === "address" || field === "postalCode" || field === "city") {
       // Ved adresseændring må gamle koordinater aldrig genbruges.
+      unitRequestRef.current += 1;
+      setUnitChoices([]);
+      setUnitsLoading(false);
       setSelectedLocation(null);
       setLocationFound(false);
       setAddressSuggestions([]);
@@ -438,7 +444,7 @@ export default function ProfilePage() {
     };
   }, [form.address, form.postalCode, showAddressSuggestions]);
 
-  function selectAddressSuggestion(suggestion: AddressSuggestion) {
+  function applyAddressSuggestion(suggestion: AddressSuggestion) {
     const isStreet = suggestion.kind === "street";
     setForm((current) => ({
       ...current,
@@ -446,24 +452,59 @@ export default function ProfilePage() {
       postalCode: suggestion.postalCode ?? current.postalCode,
       city: suggestion.city ?? current.city,
     }));
-
     const hasCoordinates =
       typeof suggestion.latitude === "number" &&
       Number.isFinite(suggestion.latitude) &&
       typeof suggestion.longitude === "number" &&
       Number.isFinite(suggestion.longitude);
-
     setSelectedLocation(hasCoordinates ? {
       latitude: suggestion.latitude as number,
       longitude: suggestion.longitude as number,
     } : null);
     setLocationFound(hasCoordinates);
     setAddressSuggestions([]);
-    setAddressSearchUnavailable(false);
     setShowAddressSuggestions(isStreet);
     if (isStreet) addressInputRef.current?.focus();
     setSuccessMessage("");
     setErrorMessage("");
+  }
+
+  async function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    const requestId = ++unitRequestRef.current;
+    setUnitChoices([]);
+    setUnitsLoading(false);
+    applyAddressSuggestion(suggestion);
+    if (suggestion.kind !== "house") return;
+
+    setUnitsLoading(true);
+    try {
+      const response = await fetch(
+        `/api/address-search?houseId=${encodeURIComponent(suggestion.id)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Etageopslag mislykkedes");
+      const payload = (await response.json()) as { units?: AddressSuggestion[] };
+      if (unitRequestRef.current !== requestId) return;
+      const units = payload.units ?? [];
+      if (units.length === 1) {
+        applyAddressSuggestion(units[0]);
+      } else if (units.length > 1) {
+        setUnitChoices(units);
+      }
+    } catch (error) {
+      if (unitRequestRef.current === requestId) {
+        console.warn("Etager/døre kunne ikke hentes:", error);
+        setErrorMessage("Etage og dør kunne ikke hentes. Du kan skrive dem manuelt efter husnummeret.");
+      }
+    } finally {
+      if (unitRequestRef.current === requestId) setUnitsLoading(false);
+    }
+  }
+
+  function chooseUnit(unit: AddressSuggestion) {
+    unitRequestRef.current += 1;
+    setUnitChoices([]);
+    applyAddressSuggestion(unit);
   }
 
   function handleAvatarSelection(
@@ -1140,6 +1181,34 @@ export default function ProfilePage() {
                               )}
                             </div>
                           )}
+                        {unitsLoading && (
+                          <p className="mt-2 text-sm text-stone-500">Henter etage og dør...</p>
+                        )}
+                        {unitChoices.length > 1 && (
+                          <div className="relative z-40 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-lg">
+                            <p className="px-4 py-2 text-sm font-semibold text-[#063f32]">Vælg din etage og dør</p>
+                            {unitChoices.map((unit) => (
+                              <button
+                                key={unit.id}
+                                type="button"
+                                onClick={() => chooseUnit(unit)}
+                                className="block w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] hover:bg-[#f0f6f1]"
+                              >
+                                {unit.text}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              className="w-full border-t border-stone-100 px-4 py-3 text-left text-xs text-stone-600 hover:bg-stone-50"
+                              onClick={() => {
+                                setUnitChoices([]);
+                                addressInputRef.current?.focus();
+                              }}
+                            >
+                              Min etage/dør mangler – jeg skriver den selv
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </FormField>
 
