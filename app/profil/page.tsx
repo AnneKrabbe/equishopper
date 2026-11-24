@@ -51,6 +51,7 @@ type ProfileData = {
 };
 
 type AddressSuggestion = {
+  kind: "street" | "address";
   id: string;
   text: string;
   address: string;
@@ -89,6 +90,7 @@ const initialForm: ProfileForm = {
 export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
 
   const [payoutSetupRequested, setPayoutSetupRequested] = useState(false);
   const [payoutOrderId, setPayoutOrderId] = useState<string | null>(null);
@@ -388,7 +390,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const query = form.address.trim();
-    if (!showAddressSuggestions || query.length < 3) {
+    if (!showAddressSuggestions || query.length < 2) {
       setAddressSuggestions([]);
       setAddressSuggestionsLoading(false);
       setAddressSearchUnavailable(false);
@@ -437,9 +439,10 @@ export default function ProfilePage() {
   }, [form.address, form.postalCode, showAddressSuggestions]);
 
   function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    const isStreet = suggestion.kind === "street";
     setForm((current) => ({
       ...current,
-      address: suggestion.address,
+      address: isStreet ? suggestion.address + " " : suggestion.address,
       postalCode: suggestion.postalCode ?? current.postalCode,
       city: suggestion.city ?? current.city,
     }));
@@ -457,7 +460,8 @@ export default function ProfilePage() {
     setLocationFound(hasCoordinates);
     setAddressSuggestions([]);
     setAddressSearchUnavailable(false);
-    setShowAddressSuggestions(false);
+    setShowAddressSuggestions(isStreet);
+    if (isStreet) addressInputRef.current?.focus();
     setSuccessMessage("");
     setErrorMessage("");
   }
@@ -1081,6 +1085,7 @@ export default function ProfilePage() {
                         <input
                           required
                           type="text"
+                          ref={addressInputRef}
                           autoComplete="off"
                           value={form.address}
                           onFocus={() => setShowAddressSuggestions(true)}
@@ -1101,8 +1106,8 @@ export default function ProfilePage() {
                         />
 
                         {showAddressSuggestions &&
-                          form.address.trim().length >= 3 && (
-                            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                          form.address.trim().length >= 2 && (
+                            <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-xl">
                               {addressSuggestionsLoading ? (
                                 <div className="px-4 py-3 text-sm text-stone-500">
                                   Henter adresseforslag...
@@ -1120,6 +1125,9 @@ export default function ProfilePage() {
                                       className="block w-full border-b border-stone-100 px-4 py-3 text-left text-sm text-[#063f32] transition last:border-b-0 hover:bg-[#f0f6f1]"
                                     >
                                       {suggestion.text}
+                                      {suggestion.kind === "street" && (
+                                        <span className="block text-xs text-stone-500">Vælg vej, og skriv derefter husnummer</span>
+                                      )}
                                     </button>
                                   ))}
                                 </div>
