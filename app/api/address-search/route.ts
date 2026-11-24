@@ -8,7 +8,17 @@ const BASE_URL = "https://adressevaelger.dk";
 const TOKEN = "adressevaelger123"; // KDS' offentligt anbefalede token.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type SearchHit = { type?: string; id?: string; titel?: string };
+type SearchHit = {
+  type?: string;
+  id?: string;
+  titel?: string;
+  vejnavn?: string;
+  vejNavn?: string;
+  husnummer?: string;
+  husNummer?: string;
+  postnr?: string;
+  postdistrikt?: string;
+};
 type SearchResponse = { fund?: SearchHit[] };
 type HouseNumber = {
   vejnavn?: string;
@@ -28,6 +38,7 @@ type AddressDetails = {
   husnummer?: HouseNumber;
 };
 type Suggestion = {
+  kind: "street" | "address";
   id: string;
   text: string;
   address: string;
@@ -111,6 +122,7 @@ async function expandHit(hit: SearchHit): Promise<Suggestion | null> {
     if (!street || !postalCode || !/^\d{4}$/.test(postalCode)) return null;
 
     return {
+      kind: "address",
       id: hit.id,
       text: hit.titel,
       address: unit ? `${street}, ${unit}` : street,
@@ -127,7 +139,7 @@ async function expandHit(hit: SearchHit): Promise<Suggestion | null> {
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const postalCode = request.nextUrl.searchParams.get("postalCode")?.trim() ?? "";
-  if (query.length < 3) return NextResponse.json({ suggestions: [] });
+  if (query.length < 2) return NextResponse.json({ suggestions: [] });
   if (query.length > 73) {
     return NextResponse.json(
       { suggestions: [], error: "Søgeteksten er for lang." }, { status: 400 }
@@ -137,7 +149,7 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     tekst: query,
     token: TOKEN,
-    maksimum: "12",
+    maksimum: "40",
   });
   if (/^\d{4}$/.test(postalCode)) params.set("postnummer", postalCode);
 
@@ -145,13 +157,65 @@ export async function GET(request: NextRequest) {
     const response = await getJson<SearchResponse>(
       `${BASE_URL}/adresser/soeg?${params.toString()}`
     );
-    const hits = (Array.isArray(response.fund) ? response.fund : [])
-      .filter((hit) => hit.type === "adresse" || hit.type === "husnummer")
-      .slice(0, 8);
-    const expanded = await Promise.all(hits.map(expandHit));
-    const suggestions = expanded.filter(
+    const hits = Array.isArray(response.fund) ? response.fund : [];
+    // Vejnavne er et reelt søgeresultat hos KDS og må ikke skjules.
+    // Brugeren vælger først vejnavn, og indtaster derefter husnummer.
+    const streetHits = hits
+      .filter((hit) =>
+        ["vejnavn", "navngivenvejpostnummer", "vejnavnhusnummer"]
+          .includes((hit.type ?? "").toLowerCase())
+      )
+      .map((hit): Suggestion | null => {
+        const name = (hit.vejnavn ?? hit.vejNavn ?? "").trim();
+        const roadName = name || (
+          hit.type === "vejnavn" ? (hit.titel ?? "").trim() : ""
+        );
+        if (!roadName) return null;
+
+        const number = (hit.husnummer ?? hit.husNummer ?? "").trim();
+        const isStreetWithNumber = hit.type === "vejnavnhusnummer";
+        const address = isStreetWithNumber && number
+          ? `${roadName} ${number}`
+          : roadName;
+        const postalCode = hit.postnr && /^\\d{4}$/.test(hit.postnr)
+          ? hit.postnr
+          : null;
+        return {
+          kind: "street",
+          id: hit.id ?? `street-${address}-${postalCode ?? ""}`,
+          text: hit.titel ?? address,
+          address,
+          postalCode,
+          city: hit.postdistrikt ?? null,
+          latitude: null,
+          longitude: null,
+        };
+      })
+      .filter((hit): hit is Suggestion => hit !== null);
+
+    // Hent kun detaljer for et begrænset antal præcise adresser.
+    // En større søgepulje gør det muligt at finde også høje husnumre
+    // ved at skrive nummeret, uden at hente 40 detaljeopslag per tast.
+    const addressHits = hits
+      .filter((hit) =>
+        hit.type === "adresse" || hit.type === "husnummer"
+      )
+      .slice(0, 16);
+    const expanded = await Promise.all(addressHits.map(expandHit));
+    const addressSuggestions = expanded.filter(
       (item): item is Suggestion => item !== null
     );
+
+    // Undgå dubletter, fx samme vejnavn på to hits uden postnummer.
+    const seen = new Set<string>();
+    const suggestions = [...streetHits, ...addressSuggestions]
+      .filter((hit) => {
+        const key = [hit.kind, hit.address, hit.postalCode ?? ""].join("|");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 24);
     return NextResponse.json({ suggestions }, {
       headers: { "Cache-Control": "no-store" },
     });
