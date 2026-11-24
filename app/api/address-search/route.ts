@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     tekst: query,
     token: TOKEN,
-    maksimum: "40",
+    max: "50",
   });
   if (/^\d{4}$/.test(postalCode)) params.set("postnummer", postalCode);
 
@@ -168,16 +168,16 @@ export async function GET(request: NextRequest) {
       .map((hit): Suggestion | null => {
         const name = (hit.vejnavn ?? hit.vejNavn ?? "").trim();
         const roadName = name || (
-          hit.type === "vejnavn" ? (hit.titel ?? "").trim() : ""
+          (hit.type ?? "").toLowerCase() === "vejnavn" ? (hit.titel ?? "").trim() : ""
         );
         if (!roadName) return null;
 
         const number = (hit.husnummer ?? hit.husNummer ?? "").trim();
-        const isStreetWithNumber = hit.type === "vejnavnhusnummer";
+        const isStreetWithNumber = (hit.type ?? "").toLowerCase() === "vejnavnhusnummer";
         const address = isStreetWithNumber && number
           ? `${roadName} ${number}`
           : roadName;
-        const postalCode = hit.postnr && /^\\d{4}$/.test(hit.postnr)
+        const postalCode = hit.postnr && /^\d{4}$/.test(hit.postnr)
           ? hit.postnr
           : null;
         return {
@@ -198,7 +198,8 @@ export async function GET(request: NextRequest) {
     // ved at skrive nummeret, uden at hente 40 detaljeopslag per tast.
     const addressHits = hits
       .filter((hit) =>
-        hit.type === "adresse" || hit.type === "husnummer"
+        (hit.type ?? "").toLowerCase() === "adresse" ||
+        (hit.type ?? "").toLowerCase() === "husnummer"
       )
       .slice(0, 16);
     const expanded = await Promise.all(addressHits.map(expandHit));
