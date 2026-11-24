@@ -57,6 +57,7 @@ type RegisterForm = {
 
 
 type AddressSuggestion = {
+  kind: "street" | "address";
   id: string;
   text: string;
   address: string;
@@ -104,6 +105,7 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState<RegisterForm>(initialForm);
 
@@ -196,7 +198,7 @@ export default function RegisterPage() {
   useEffect(() => {
     const query = form.address.trim();
 
-    if (query.length < 3 || selectedLocation) {
+    if (query.length < 2 || selectedLocation) {
       setAddressSuggestions([]);
       setAddressSearchLoading(false);
       setAddressSearchUnavailable(false);
@@ -272,9 +274,10 @@ export default function RegisterPage() {
   }
 
   function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    const isStreet = suggestion.kind === "street";
     setForm((current) => ({
       ...current,
-      address: suggestion.address,
+      address: isStreet ? suggestion.address + " " : suggestion.address,
       postalCode: suggestion.postalCode ?? current.postalCode,
       city: suggestion.city ?? current.city,
     }));
@@ -292,7 +295,8 @@ export default function RegisterPage() {
     }
 
     setAddressSuggestions([]);
-    setAddressMenuOpen(false);
+    setAddressMenuOpen(isStreet);
+    if (isStreet) addressInputRef.current?.focus();
     setAddressSearchUnavailable(false);
     setErrorMessage("");
   }
@@ -1082,6 +1086,7 @@ if (
                     <input
                       required
                       type="text"
+                      ref={addressInputRef}
                       autoComplete="off"
                       value={form.address}
                       onChange={(event) => handleAddressChange(event.target.value)}
@@ -1123,6 +1128,9 @@ if (
                             className="block w-full rounded-xl px-4 py-3 text-left text-sm text-stone-700 transition hover:bg-[#edf4ef]"
                           >
                             <span className="block">{suggestion.text}</span>
+                            {suggestion.kind === "street" && (
+                              <span className="block text-xs text-stone-500">Vælg vej, og skriv derefter husnummer</span>
+                            )}
                           </button>
                         ))}
                       </div>
