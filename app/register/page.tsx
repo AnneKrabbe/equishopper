@@ -65,6 +65,9 @@ type AddressSuggestion = {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  houseId?: string | null;
+  floor?: string | null;
+  door?: string | null;
 };
 
 type SelectedLocation = {
@@ -316,11 +319,14 @@ export default function RegisterPage() {
     setUnitChoices([]);
     setUnitsLoading(false);
     applyAddressSuggestion(suggestion);
-    if (suggestion.kind !== "house") return;
+    const needsUnitChoice =
+      suggestion.kind === "house" ||
+      (Boolean(suggestion.houseId) && !suggestion.floor && !suggestion.door);
+    if (!needsUnitChoice) return;
     setUnitsLoading(true);
     try {
       const response = await fetch(
-        `/api/address-search?houseId=${encodeURIComponent(suggestion.id)}`,
+        `/api/address-search?houseId=${encodeURIComponent(suggestion.houseId ?? suggestion.id)}`,
         { cache: "no-store" }
       );
       if (!response.ok) throw new Error("Etageopslag mislykkedes");
